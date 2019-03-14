@@ -18,30 +18,26 @@
 
 -define(SERVER, ?MODULE).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+-import(proplists, [get_value/2]).
+
 
 -export([start_link/0, stop/0]).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--import(proplists, [get_value/2]).
-
 -record(state, {mqttc, host, port, username, password, keepalive, topics, subqos,
-                landing_topic, landing_maxqos}).
+                landing_enable, landing_topic, landing_maxqos}).
 
 -define(APP, emqx_bridge_mqtt).
+
 -define(CLIENT_ID, <<"emqx_bridge_mqtt">>).
 
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
+-define(LOG(Level, Fmt, Args), lager:Level("emqx_bridge_mqtt_worker " ++ Fmt, Args)).
+
+%%------------------------------------------------------------------------------
+%% API Function
+%%------------------------------------------------------------------------------
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -49,11 +45,14 @@ start_link() ->
 stop() ->
     gen_server:call(?SERVER, stop).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
+%%------------------------------------------------------------------------------
+%% gen_server Callbacks
+%%------------------------------------------------------------------------------
 
 init(_Args) ->
+    %% Trace the exit single
+    process_flag(trap_exit, true),
+
     ServerCfg = application:get_env(?APP, server, []),
     Host = get_value(host, ServerCfg),
     Port = get_value(port, ServerCfg),
@@ -65,14 +64,18 @@ init(_Args) ->
     Topics = get_value(topics, RemoteCfg),
     SubQos = get_value(subqos, RemoteCfg),
 
-    LandingMaxQos = application:get_env(?APP, landing_maxqos),
-    LandingTopic = application:get_env(?APP, landing_topic),
+    LandingCfg = application:get_env(?APP, landing, []),
+    LandingEnable = get_value(enable, LandingCfg),
+    LandingMaxQos = get_value(maxqos, LandingCfg),
+    LandingTopic = get_value(topic, LandingCfg),
 
     %% Preper to connect the remote server
     self() ! connect,
 
+    ?LOG(info, "initialed with ~s:~p~n", [Host, Port]),
+
     {ok, #state{host = Host, port = Port, username = Username, password = Password,
-                keepalive = Keepalive, topics = Topics, subqos = SubQos,
+                keepalive = Keepalive, topics = Topics, subqos = SubQos, landing_enable = LandingEnable,
                 landing_topic = LandingTopic, landing_maxqos = LandingMaxQos}}.
 
 handle_call(stop, _From, State) ->
@@ -90,37 +93,33 @@ handle_info(connect, #state{mqttc = OldClient,
                             username = Username,
                             password = Password,
                             keepalive = Keepalive} = State) ->
+    ?LOG(debug, "will connect to ~s:~p~n", [Host, Port]),
     case OldClient of 
         undefined -> ignore;
         OldClient -> emqttc:disconnect(OldClient)
     end, 
-    %% FIXME: connected failed???? {error, Reason}
-   {ok, C} = emqttc:start_link([{host, Host},
-                                {port, Port},
-                                {client_id, ?CLIENT_ID},
-                                {username, Username},
-                                {password, Password},
-                                {keepalive, Keepalive},
-                                {logger, {console, info}}]),
+
+    {ok, C} = emqttc:start_link([{host, Host},
+                                 {port, Port},
+                                 {client_id, ?CLIENT_ID},
+                                 {username, Username},
+                                 {password, Password},
+                                 {keepalive, Keepalive},
+                                 {reconnect, 1},            %% Reconect interval => (if failed will double it)
+                                 {logger, {console, info}}]),
     {noreply, State#state{mqttc = C}};
 
 %% Receive Messages
-handle_info({publish, Topic, Payload}, #state{landing_maxqos=MaxQos, landing_topic=LTopic} = State) ->
-    %% TODO: ?LOG()
-    io:format("Message from ~s: ~p~n", [Topic, Payload]),
-
-    %% TODO: Forward the recevied message
-    %% FIXME: Qos is not forwarding from remote
-    From = <<"emqx_bridge_mqtt">>,
-    Msg = emqx_message:make(From, MaxQos, LTopic, Payload),
-    emqx:publish(Msg),
-
+handle_info({publish, Topic, Payload}, State) ->
+    ?LOG(debug, "received from ~p, payload ~p~n", [Topic, Payload]),
+    forward(Topic, Payload, State),
     {noreply, State};
 
 %% Client connected
-handle_info({mqttc, C, connected}, State = #state{mqttc = C, topics = Topics, subqos = SubQos}) ->
-    io:format("Client ~p is connected~n", [C]),
-    
+handle_info({mqttc, C, connected}, State = #state{mqttc = C, host = Host, port = Port,
+                                                  topics = Topics, subqos = SubQos}) ->
+    ?LOG(info, "mqttc(~p) has connected to ~s:~p~n", [C, Host, Port]),
+
     %% Subscribe topics, when the mqttc connected to remote server
     lists:foreach(fun(T) ->
                     emqttc:subscribe(C, T, SubQos)
@@ -130,14 +129,16 @@ handle_info({mqttc, C, connected}, State = #state{mqttc = C, topics = Topics, su
 
 %% Client disconnected
 handle_info({mqttc, C,  disconnected}, State = #state{mqttc = C}) ->
-    io:format("Client ~p is disconnected~n", [C]),
+    ?LOG(warning, "mqttc client ~p has disconnected~n", [C]),
 
-    %% TODO: is need to send reconnect????
-    self() ! connect,
+    %% XXX: after a interval reconnect to the remote
+    %% The reconect timer
+    erlang:send_after(100, self(), connect),
 
     {noreply, State};
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    ?LOG(warning, "UNEXCEPTED MSG ~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -145,4 +146,22 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%%------------------------------------------------------------------------------
+%% Interval Funcs
+%%------------------------------------------------------------------------------
+
+forward(Topic, Payload, #state{landing_enable = false, landing_maxqos = MaxQos}) ->
+    publish(Topic, MaxQos, Payload);
+forward(_, Payload, #state{landing_enable = true, landing_maxqos = MaxQos, landing_topic = Topic}) ->
+    publish(Topic, MaxQos, Payload).
+
+publish(Topic, Qos, Payload) ->
+    Msg = emqx_message:make(<<"emqx_bridge_mqtt_worker">>, Qos, Topic, Payload),
+    case emqx:publish(Msg) of
+        {ok, _Delivery} ->
+            ?LOG(debug,"delivered the message ~p~n", [Payload]);
+        _ ->
+            ?LOG(warning, "delivered the ~p success, but not recevier~n", [Payload])
+    end, ok.
 

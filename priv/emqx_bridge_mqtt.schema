@@ -66,16 +66,27 @@ end}.
    {subqos, SubQos}]
 end}.
 
-{mapping, "bridge.mqtt.landing.topic", "emqx_bridge_mqtt.landing_topic", [
+{mapping, "bridge.mqtt.landing.enable", "emqx_bridge_mqtt.landing", [
+  {default, true},
+  {datatype, {enum, [true, false]}}
+]}.
+
+{mapping, "bridge.mqtt.landing.topic", "emqx_bridge_mqtt.landing", [
+  {default, ""},
   {datatype, string}
 ]}.
 
-{mapping, "bridge.mqtt.landing.maxqos", "emqx_bridge_mqtt.landing_maxqos", [
+{mapping, "bridge.mqtt.landing.maxqos", "emqx_bridge_mqtt.landing", [
   {default, 1},
   {datatype, integer}
 ]}.
 
-{translation, "emqx_bridge_mqtt.landing_topic", fun(Conf) ->
-  list_to_binary(cuttlefish:conf_get("bridge.mqtt.landing.topic", Conf))
+{translation, "emqx_bridge_mqtt.landing", fun(Conf) ->
+  Enable = cuttlefish:conf_get("bridge.mqtt.landing.enable", Conf),
+  Topic  = cuttlefish:conf_get("bridge.mqtt.landing.topic", Conf),
+  MaxQos = cuttlefish:conf_get("bridge.mqtt.landing.maxqos", Conf),
+  [{enable, Enable},
+   {maxqos, MaxQos},
+   {topic, list_to_binary(Topic)}]
 end}.
 
