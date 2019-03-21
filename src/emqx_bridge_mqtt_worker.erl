@@ -151,13 +151,15 @@ code_change(_OldVsn, State, _Extra) ->
 %% Interval Funcs
 %%------------------------------------------------------------------------------
 
-forward(Topic, Payload, #state{landing_enable = false, landing_maxqos = MaxQos}) ->
-    publish(Topic, MaxQos, Payload);
-forward(_, Payload, #state{landing_enable = true, landing_maxqos = MaxQos, landing_topic = Topic}) ->
-    publish(Topic, MaxQos, Payload).
-
-publish(Topic, Qos, Payload) ->
-    Msg = emqx_message:make(<<"emqx_bridge_mqtt_worker">>, Qos, Topic, Payload),
+forward(OriginalTopic, Payload, #state{landing_enable = LandingEnable,
+                                       landing_maxqos = MaxQos,
+                                       landing_topic  = LandingTopic}) ->
+    Topic = case LandingEnable of
+                true -> LandingTopic;
+                false -> OriginalTopic
+            end,
+    Headers = [{original_topic, OriginalTopic}],
+    Msg = emqx_message:make(<<"emqx_bridge_mqtt_worker">>, MaxQos, Topic, Payload, Headers),
     case emqx:publish(Msg) of
         {ok, _Delivery} ->
             ?LOG(debug,"delivered the message ~p~n", [Payload]);
