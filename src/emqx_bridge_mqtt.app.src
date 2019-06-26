@@ -1,0 +1,10 @@
+{application, emqx_bridge_mqtt,
+             [{description, "EMQ X Bridge to mqtt broker"},
+              {vsn, "git"},
+              {registered, []},
+              {mod, {emqx_bridge_app, []}},
+              {applications, [kernel, stdlib]},
+              {env,[]},
+              {modules, []},
+              {licenses, ["Apache 2.0"]},
+              {links, []}]}.
