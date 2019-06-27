@@ -63,6 +63,7 @@
 %% APIs
 -export([ start_link/2
         , import_batch/2
+        , register_metrics/0
         , handle_ack/2
         , stop/1
         ]).
@@ -196,7 +197,11 @@ status(Id) ->
 %% @doc This function is to be evaluated on message/batch receiver side.
 -spec import_batch(batch(), fun(() -> ok)) -> ok.
 import_batch(Batch, AckFun) ->
-    lists:foreach(fun emqx_broker:publish/1, emqx_bridge_msg:to_broker_msgs(Batch)),
+    PublishMsg = fun(Msg) ->
+                         emqx_metrics:inc('bridge.mqtt.message_received'),
+                         emqx_broker:publish(Msg)
+                 end,
+    lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)),
     AckFun().
 
 %% @doc This function is to be evaluated on message/batch exporter side
@@ -595,7 +600,11 @@ maybe_send(#{connect_module := Module,
              connection := Connection,
              mountpoint := Mountpoint
             }, Batch) ->
-    Module:send(Connection, [emqx_bridge_msg:to_export(Module, Mountpoint, M) || M <- Batch]).
+    ExportMsg = fun(Message) ->
+                    emqx_metrics:inc('bridge.mqtt.message_sent'),
+                    emqx_bridge_msg:to_export(Module, Mountpoint, Message)
+                end,
+    Module:send(Connection, [ExportMsg(M) || M <- Batch]).
 
 format_mountpoint(undefined) ->
     undefined;
@@ -608,3 +617,7 @@ name(Id) -> list_to_atom(lists:concat([?MODULE, "_", Id])).
 
 id(Pid) when is_pid(Pid) -> Pid;
 id(Name) -> name(Name).
+
+register_metrics() ->
+    [emqx_metrics:new(MetricName) || MetricName <- ['bridge.mqtt.message_sent',
+                                                    'bridge.mqtt.message_received']].

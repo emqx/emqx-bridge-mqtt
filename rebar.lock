@@ -8,7 +8,7 @@
  {<<"ekka">>,{pkg,<<"ekka">>,<<"0.5.6">>},1},
  {<<"emqx">>,
   {git,"https://github.com/emqx/emqx",
-       {ref,"22f7280d8e8854ebc8918a603bc6e6211ff5ddc1"}},
+       {ref,"0e2e4e73ca925a443f3f8e1efd47724c73f9fdb5"}},
   0},
  {<<"esockd">>,{pkg,<<"esockd">>,<<"5.5.0">>},1},
  {<<"gen_rpc">>,

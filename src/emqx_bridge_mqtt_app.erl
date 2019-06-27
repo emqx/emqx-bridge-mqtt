@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_app).
+-module(emqx_bridge_mqtt_app).
 
 -emqx_plugin(bridge).
 
@@ -21,6 +21,7 @@
 -export([start/2, stop/1]).
 
 start(_StartType, _StartArgs) ->
+    emqx_bridge:register_metrics(),
     emqx_bridge_sup:start_link().
 
 stop(_State) ->

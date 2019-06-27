@@ -2,7 +2,7 @@
              [{description, "EMQ X Bridge to mqtt broker"},
               {vsn, "git"},
               {registered, []},
-              {mod, {emqx_bridge_app, []}},
+              {mod, {emqx_bridge_mqtt_app, []}},
               {applications, [kernel, stdlib]},
               {env,[]},
               {modules, []},
