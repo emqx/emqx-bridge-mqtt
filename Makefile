@@ -36,5 +36,5 @@ $(CUTTLEFISH_SCRIPT):
 	@${REBAR} get-deps
 	@if [ ! -f cuttlefish ]; then make -C _build/default/lib/cuttlefish; fi
 
-app.config: $(CUTTLEFISH_SCRIPT) etc/emqx_bridge.conf
-	$(verbose) $(CUTTLEFISH_SCRIPT) -l info -e etc/ -c etc/emqx_bridge.conf -i priv/emqx_bridge.schema -d data
+app.config: $(CUTTLEFISH_SCRIPT)
+	$(verbose) $(CUTTLEFISH_SCRIPT) -l info -e etc/ -c etc/emqx_bridge_mqtt.conf -i priv/emqx_bridge_mqtt.schema -d data

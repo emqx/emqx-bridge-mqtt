@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_SUITE).
+-module(emqx_bridge_mqtt_SUITE).
 
 -export([ all/0
         , init_per_suite/1
@@ -37,12 +37,12 @@ init_per_suite(Config) ->
         nonode@nohost -> net_kernel:start(['emqx@127.0.0.1', longnames]);
         _ -> ok
     end,
-    emqx_ct_helpers:start_apps([]),
+    emqx_ct_helpers:start_apps([emqx_bridge_mqtt]),
     emqx_logger:set_log_level(error),
     [{log_level, error} | Config].
 
 end_per_suite(_Config) ->
-    emqx_ct_helpers:stop_apps([]).
+    emqx_ct_helpers:stop_apps([emqx_bridge_mqtt]).
 
 t_mngr(Config) when is_list(Config) ->
     Subs = [{<<"a">>, 1}, {<<"b">>, 2}],
