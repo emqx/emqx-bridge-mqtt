@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_sup).
+-module(emqx_bridge_mqtt_sup).
 -behavior(supervisor).
 
 -include("emqx_bridge_mqtt.hrl").
@@ -60,7 +60,7 @@ bridge_spec({Name, Config}) ->
 
 -spec(bridges() -> [{node(), map()}]).
 bridges() ->
-    [{Name, emqx_bridge:status(Pid)} || {Name, Pid, _, _} <- supervisor:which_children(?SUP)].
+    [{Name, emqx_bridge_mqtt:status(Pid)} || {Name, Pid, _, _} <- supervisor:which_children(?SUP)].
 
 -spec(is_bridge_exist(atom() | pid()) -> boolean()).
 is_bridge_exist(Id) ->

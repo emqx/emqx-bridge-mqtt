@@ -13,42 +13,155 @@
 %% limitations under the License.
 
 -module(emqx_bridge_mqtt_tests).
+-behaviour(emqx_bridge_mqtt_connect).
+
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("emqx/include/emqx.hrl").
 -include_lib("emqx/include/emqx_mqtt.hrl").
 
-send_and_ack_test() ->
-    %% delegate from gen_rpc to rpc for unit test
-    meck:new(emqx_client, [passthrough, no_history]),
-    meck:expect(emqx_client, start_link, 1,
-                fun(#{msg_handler := Hdlr}) ->
-                        {ok, spawn_link(fun() -> fake_client(Hdlr) end)}
-                end),
-    meck:expect(emqx_client, connect, 1, {ok, dummy}),
-    meck:expect(emqx_client, stop, 1,
-                fun(Pid) -> Pid ! stop end),
-    meck:expect(emqx_client, publish, 2,
-                fun(Client, Msg) ->
-                        Client ! {publish, Msg},
-                        {ok, Msg} %% as packet id
-                end),
-    try
-        Max = 100,
-        Batch = lists:seq(1, Max),
-        {ok, Ref, Conn} = emqx_bridge_mqtt:start(#{address => "127.0.0.1:1883"}),
-        %% return last packet id as batch reference
-        {ok, AckRef} = emqx_bridge_mqtt:send(Conn, Batch),
-        %% expect batch ack
-        receive {batch_ack, AckRef} -> ok end,
-        ok = emqx_bridge_mqtt:stop(Ref, Conn)
-    after
-        meck:unload(emqx_client)
+-define(BRIDGE_NAME, test).
+-define(BRIDGE_REG_NAME, emqx_bridge_mqtt_test).
+-define(WAIT(PATTERN, TIMEOUT),
+        receive
+            PATTERN ->
+                ok
+        after
+            TIMEOUT ->
+                error(timeout)
+        end).
+
+%% stub callbacks
+-export([start/1, send/2, stop/2]).
+
+start(#{connect_result := Result, test_pid := Pid, test_ref := Ref}) ->
+    case is_pid(Pid) of
+        true -> Pid ! {connection_start_attempt, Ref};
+        false -> ok
+    end,
+    Result.
+
+send(SendFun, Batch) when is_function(SendFun, 1) ->
+    SendFun(Batch).
+
+stop(_Ref, _Pid) -> ok.
+
+%% bridge worker should retry connecting remote node indefinitely
+reconnect_test() ->
+    emqx_metrics:start_link(),
+    emqx_bridge_mqtt:register_metrics(),
+    Ref = make_ref(),
+    Config = make_config(Ref, self(), {error, test}),
+    {ok, Pid} = emqx_bridge_mqtt:start_link(?BRIDGE_NAME, Config),
+    %% assert name registered
+    ?assertEqual(Pid, whereis(?BRIDGE_REG_NAME)),
+    ?WAIT({connection_start_attempt, Ref}, 1000),
+    %% expect same message again
+    ?WAIT({connection_start_attempt, Ref}, 1000),
+    ok = emqx_bridge_mqtt:stop(?BRIDGE_REG_NAME),
+    emqx_metrics:stop(),
+    ok.
+
+%% connect first, disconnect, then connect again
+disturbance_test() ->
+    emqx_metrics:start_link(),
+    emqx_bridge_mqtt:register_metrics(),
+    Ref = make_ref(),
+    Config = make_config(Ref, self(), {ok, Ref, connection}),
+    {ok, Pid} = emqx_bridge_mqtt:start_link(?BRIDGE_NAME, Config),
+    ?assertEqual(Pid, whereis(?BRIDGE_REG_NAME)),
+    ?WAIT({connection_start_attempt, Ref}, 1000),
+    Pid ! {disconnected, Ref, test},
+    ?WAIT({connection_start_attempt, Ref}, 1000),
+    emqx_metrics:stop(),
+    ok = emqx_bridge_mqtt:stop(?BRIDGE_REG_NAME).
+
+%% buffer should continue taking in messages when disconnected
+buffer_when_disconnected_test_() ->
+    {timeout, 10000, fun test_buffer_when_disconnected/0}.
+
+test_buffer_when_disconnected() ->
+    Ref = make_ref(),
+    Nums = lists:seq(1, 100),
+    Sender = spawn_link(fun() -> receive {bridge, Pid} -> sender_loop(Pid, Nums, _Interval = 5) end end),
+    SenderMref = monitor(process, Sender),
+    Receiver = spawn_link(fun() -> receive {bridge, Pid} -> receiver_loop(Pid, Nums, _Interval = 1) end end),
+    ReceiverMref = monitor(process, Receiver),
+    SendFun = fun(Batch) ->
+                      BatchRef = make_ref(),
+                      Receiver ! {batch, BatchRef, Batch},
+                      {ok, BatchRef}
+              end,
+    Config0 = make_config(Ref, false, {ok, Ref, SendFun}),
+    Config = Config0#{reconnect_delay_ms => 100},
+    emqx_metrics:start_link(),
+    emqx_bridge_mqtt:register_metrics(),
+    {ok, Pid} = emqx_bridge_mqtt:start_link(?BRIDGE_NAME, Config),
+    Sender ! {bridge, Pid},
+    Receiver ! {bridge, Pid},
+    ?assertEqual(Pid, whereis(?BRIDGE_REG_NAME)),
+    Pid ! {disconnected, Ref, test},
+    ?WAIT({'DOWN', SenderMref, process, Sender, normal}, 5000),
+    ?WAIT({'DOWN', ReceiverMref, process, Receiver, normal}, 1000),
+    ok = emqx_bridge_mqtt:stop(?BRIDGE_REG_NAME),
+    emqx_metrics:stop().
+
+manual_start_stop_test() ->
+    emqx_metrics:start_link(),
+    emqx_bridge_mqtt:register_metrics(),
+    Ref = make_ref(),
+    Config0 = make_config(Ref, self(), {ok, Ref, connection}),
+    Config = Config0#{start_type := manual},
+    {ok, Pid} = emqx_bridge_mqtt:ensure_started(?BRIDGE_NAME, Config),
+    %% call ensure_started again should yeld the same result
+    {ok, Pid} = emqx_bridge_mqtt:ensure_started(?BRIDGE_NAME, Config),
+    ?assertEqual(Pid, whereis(?BRIDGE_REG_NAME)),
+    emqx_bridge_mqtt:ensure_stopped(unknown),
+    emqx_bridge_mqtt:ensure_stopped(Pid),
+    emqx_bridge_mqtt:ensure_stopped(?BRIDGE_REG_NAME),
+    emqx_metrics:stop().
+
+%% Feed messages to bridge
+sender_loop(_Pid, [], _) -> exit(normal);
+sender_loop(Pid, [Num | Rest], Interval) ->
+    random_sleep(Interval),
+    Pid ! {dispatch, dummy, make_msg(Num)},
+    sender_loop(Pid, Rest, Interval).
+
+%% Feed acknowledgments to bridge
+receiver_loop(_Pid, [], _) -> ok;
+receiver_loop(Pid, Nums, Interval) ->
+    receive
+        {batch, BatchRef, Batch} ->
+            Rest = match_nums(Batch, Nums),
+            random_sleep(Interval),
+            emqx_bridge_mqtt:handle_ack(Pid, BatchRef),
+            receiver_loop(Pid, Rest, Interval)
     end.
 
-fake_client(#{puback := PubAckCallback} = Hdlr) ->
-    receive
-        {publish, PktId} ->
-            PubAckCallback(#{packet_id => PktId, reason_code => ?RC_SUCCESS}),
-            fake_client(Hdlr);
-        stop ->
-            exit(normal)
+random_sleep(MaxInterval) ->
+    case rand:uniform(MaxInterval) - 1 of
+        0 -> ok;
+        T -> timer:sleep(T)
     end.
+
+match_nums([], Rest) -> Rest;
+match_nums([#message{payload = P} | Rest], Nums) ->
+    I = binary_to_integer(P),
+    case Nums of
+        [I | NumsLeft] -> match_nums(Rest, NumsLeft);
+        [J | _] when J > I -> match_nums(Rest, Nums); %% allow retry
+        _ -> error([{received, I}, {expecting, Nums}])
+    end.
+
+make_config(Ref, TestPid, Result) ->
+    #{test_pid => TestPid,
+      test_ref => Ref,
+      connect_module => ?MODULE,
+      reconnect_delay_ms => 50,
+      connect_result => Result,
+      start_type => auto
+     }.
+
+make_msg(I) ->
+    Payload = integer_to_binary(I),
+    emqx_message:make(<<"test/topic">>, Payload).

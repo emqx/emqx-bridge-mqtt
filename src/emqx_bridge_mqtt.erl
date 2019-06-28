@@ -16,7 +16,7 @@
 %% The `bridge' batching layer collects local messages in batches and sends over
 %% to remote MQTT node/cluster via `connetion' transport layer.
 %% In case `REMOTE' is also an EMQX node, `connection' is recommended to be
-%% the `gen_rpc' based implementation `emqx_bridge_rpc'. Otherwise `connection'
+%% the `gen_rpc' based implementation `emqx_bridge_mqtt_rpc'. Otherwise `connection'
 %% has to be `emqx_bridge_mqtt'.
 %%
 %% ```
@@ -48,7 +48,7 @@
 %%      failed to send to remote node/cluster.
 %%
 %% NOTE: A bridge worker may subscribe to multiple (including wildcard)
-%% local topics, and the underlying `emqx_bridge_connect' may subscribe to
+%% local topics, and the underlying `emqx_bridge_mqtt_connect' may subscribe to
 %% multiple remote topics, however, worker/connections are not designed
 %% to support automatic load-balancing, i.e. in case it can not keep up
 %% with the amount of messages comming in, administrator should split and
@@ -57,7 +57,7 @@
 %% NOTES:
 %% * Local messages are all normalised to QoS-1 when exporting to remote
 
--module(emqx_bridge).
+-module(emqx_bridge_mqtt).
 -behaviour(gen_statem).
 
 %% APIs
@@ -107,7 +107,7 @@
 -type id() :: atom() | string() | pid().
 -type qos() :: emqx_mqtt_types:qos().
 -type config() :: map().
--type batch() :: [emqx_bridge_msg:exp_msg()].
+-type batch() :: [emqx_bridge_mqtt_msg:exp_msg()].
 -type ack_ref() :: term().
 -type topic() :: emqx_topic:topic().
 
@@ -129,7 +129,7 @@
 %% @doc Start a bridge worker. Supported configs:
 %% start_type: 'manual' (default) or 'auto', when manual, bridge will stay
 %%      at 'standing_by' state until a manual call to start it.
-%% connect_module: The module which implements emqx_bridge_connect behaviour
+%% connect_module: The module which implements emqx_bridge_mqtt_connect behaviour
 %%      and work as message batch transport layer
 %% reconnect_delay_ms: Delay in milli-seconds for the bridge worker to retry
 %%      in case of transportation failure.
@@ -139,14 +139,14 @@
 %%      `undefined', `<<>>' or `""' to disable
 %% forwards: Local topics to subscribe.
 %% queue.batch_bytes_limit: Max number of bytes to collect in a batch for each
-%%      send call towards emqx_bridge_connect
+%%      send call towards emqx_bridge_mqtt_connect
 %% queue.batch_count_limit: Max number of messages to collect in a batch for
-%%      each send call towards emqx_bridge_connect
+%%      each send call towards emqx_bridge_mqtt_connect
 %% queue.replayq_dir: Directory where replayq should persist messages
 %% queue.replayq_seg_bytes: Size in bytes for each replayq segment file
 %%
 %% Find more connection specific configs in the callback modules
-%% of emqx_bridge_connect behaviour.
+%% of emqx_bridge_mqtt_connect behaviour.
 start_link(Name, Config) when is_list(Config) ->
     start_link(Name, maps:from_list(Config));
 start_link(Name, Config) ->
@@ -201,7 +201,7 @@ import_batch(Batch, AckFun) ->
                          emqx_metrics:inc('bridge.mqtt.message_received'),
                          emqx_broker:publish(Msg)
                  end,
-    lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)),
+    lists:foreach(PublishMsg, emqx_bridge_mqtt_msg:to_broker_msgs(Batch)),
     AckFun().
 
 %% @doc This function is to be evaluated on message/batch exporter side
@@ -258,7 +258,7 @@ init(Config) ->
                        seg_bytes => GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES)
                       }
         end,
-    Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
+    Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_mqtt_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),
     Topics = lists:sort([iolist_to_binary(T) || T <- Get(forwards, [])]),
     Subs = lists:keysort(1, lists:map(fun({T0, QoS}) ->
@@ -274,7 +274,7 @@ init(Config) ->
                                   mountpoint,
                                   forwards
                                  ], Config#{subscriptions => Subs}),
-    ConnectFun = fun(SubsX) -> emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
+    ConnectFun = fun(SubsX) -> emqx_bridge_mqtt_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
     {ok, standing_by,
      #{connect_module => ConnectModule,
        connect_fun => ConnectFun,
@@ -592,8 +592,8 @@ disconnect(State) ->
     eval_bridge_handler(State, disconnected).
 
 %% Called only when replayq needs to dump it to disk.
-msg_marshaller(Bin) when is_binary(Bin) -> emqx_bridge_msg:from_binary(Bin);
-msg_marshaller(Msg) -> emqx_bridge_msg:to_binary(Msg).
+msg_marshaller(Bin) when is_binary(Bin) -> emqx_bridge_mqtt_msg:from_binary(Bin);
+msg_marshaller(Msg) -> emqx_bridge_mqtt_msg:to_binary(Msg).
 
 %% Return {ok, SendAckRef} or {error, Reason}
 maybe_send(#{connect_module := Module,
@@ -602,7 +602,7 @@ maybe_send(#{connect_module := Module,
             }, Batch) ->
     ExportMsg = fun(Message) ->
                     emqx_metrics:inc('bridge.mqtt.message_sent'),
-                    emqx_bridge_msg:to_export(Module, Mountpoint, Message)
+                    emqx_bridge_mqtt_msg:to_export(Module, Mountpoint, Message)
                 end,
     Module:send(Connection, [ExportMsg(M) || M <- Batch]).
 

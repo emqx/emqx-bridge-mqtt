@@ -31,7 +31,7 @@
 -define(RESOURCE_TYPE_MQTT, 'bridge_mqtt').
 
 -define(RESOURCE_CONFIG_SPEC,
-        #{name => #{order => 1,
+        #{bridge_name => #{order => 1,
                     type => string,
                     required => true,
                     default => <<"aws">>,
@@ -223,7 +223,7 @@
                              description => #{en => <<"The list of Bridge Subscriptions">>,
                                               zh => <<"桥接订阅列表"/utf8>>}
                             },
-          reconnect_interval => #{order => 20,
+          reconnect_interval => #{order => 19,
                                   type => string,
                                   required => false,
                                   default => <<"30s">>,
@@ -234,7 +234,7 @@
                                                    zh => <<"桥接的启动类型<br/>"
                                                            "启动类型: auto, manual"/utf8>>}
                                  },
-          retry_interval => #{order => 21,
+          retry_interval => #{order => 20,
                               type => string,
                               required => false,
                               default => <<"20s">>,
@@ -243,7 +243,7 @@
                               description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
                                                zh => <<"QoS1 消息重传间隔"/utf8>>}
                              },
-          max_inflight_batches => #{order => 22,
+          max_inflight_batches => #{order => 21,
                                     type => number,
                                     required => false,
                                     default => 32,
@@ -252,16 +252,18 @@
                                     description => #{en => <<"Used to resend batch messages">>,
                                                      zh => <<"用于批量重传消息的 Inflight 大小"/utf8>>}
                                    },
-          queue_replayq_dir => #{order => 23,
+          queue_replayq_dir => #{order => 22,
                                  type => string,
                                  required => false,
-                                 default => 32,
-                                 title => #{en => <<"batch_count_limit for replay queue">>,
-                                            zh => <<"用于 replay 队列的 batch_count_limit 值"/utf8>>},
-                                 description => #{en => <<"Max number of messages to collect in a batch">>,
+                                 default => <<"data/emqx_aws_bridge">>,
+                                 title => #{en => <<"Directory for replay queue">>,
+                                            zh => <<"replay queue 所在路径"/utf8>>},
+                                 description => #{en => <<"Base directory for replayq to store messages on disk. "
+                                                          "If this config entry is missing or set to undefined,",
+                                                          "replayq works in a mem-only manner.">>,
                                                   zh => <<"一次 batch 所收集的最大数量的消息数"/utf8>>}
                                 },
-          queue_batch_count_limit => #{order => 24,
+          queue_batch_count_limit => #{order => 23,
                                        type => number,
                                        required => false,
                                        default => 32,
@@ -270,7 +272,7 @@
                                        description => #{en => <<"Max number of messages to collect in a batch">>,
                                                         zh => <<"一次 batch 所收集的最大数量的消息数"/utf8>>}
                                       },
-          queue_batch_bytes_limit => #{order => 25,
+          queue_batch_bytes_limit => #{order => 24,
                                        type => string,
                                        required => false,
                                        default => <<"1000MB">>,
@@ -279,7 +281,7 @@
                                        description => #{en => <<"Max number of bytes to collect in a batch">>,
                                                         zh => <<"一次 batch 所收集的最大数量的字节数"/utf8>>}
                                       },
-          queue_seg_bytes => #{order => 26,
+          queue_seg_bytes => #{order => 25,
                                type => string,
                                required => false,
                                default => <<"10MB">>,
@@ -330,7 +332,7 @@
                                }
               }).
 
-on_resource_create(ResId, #{<<"name">> := Name,
+on_resource_create(ResId, #{<<"bridge_name">> := Name,
                             <<"address">> := Address,
                             <<"proto_ver">> := ProtoVer,
                             <<"client_id">> := ClientId,
@@ -357,7 +359,8 @@ on_resource_create(ResId, #{<<"name">> := Name,
                             <<"queue_seg_bytes">> := QueueSegBytes
                            }) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
-    BridgeName = str(Name),
+    application:ensure_all_started(emqx_bridge_mqtt),
+    BridgeName = binary_to_atom(Name, utf8),
     Options = [{address, case is_node_addr(Address) of
                              true -> erlang:list_to_atom(Address);
                              false -> Address
@@ -365,11 +368,11 @@ on_resource_create(ResId, #{<<"name">> := Name,
                {clean_start, CleanStart},
                {client_id, ClientId},
                {connect_module, case is_node_addr(Address) of
-                                    true -> emqx_bridge_rpc;
+                                    true -> emqx_bridge_mqtt_rpc;
                                     false -> emqx_bridge_mqtt
                                 end},
                {forwards, string:tokens(str(Forwards), ", ")},
-               {keepalive, cuttlefish_duration:parse(KeepAlive, s)},
+               {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
                {max_inflight_batches, MaxInflightBatches},
                {mountpoint, str(MountPoint)},
                {username, str(Username)},
@@ -384,9 +387,9 @@ on_resource_create(ResId, #{<<"name">> := Name,
                          batch_count_limit => QueueBatchCountLimit,
                          replayq_dir => QueueReplayqDir,
                          replayq_seg_bytes => QueueSegBytes}},
-               {reconnect_delay_ms, cuttlefish_duration:parse(ReconnectInterval, ms)},
-               {retry_interval, cuttlefish_duration:parse(RetryInterval, ms)},
-               {ssl, cuttlefish_flag:parse(SslFlag)},
+               {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
+               {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
+               {ssl, cuttlefish_flag:parse(str(SslFlag))},
                {ssl_opts,
                 [{versions, tls_versions(TlsVersions)},
                  {ciphers, ciphers(Ciphers)},
@@ -399,12 +402,12 @@ on_resource_create(ResId, #{<<"name">> := Name,
                {start_type, auto},
                {subscriptions, subscriptions(Subscriptions)}
               ],
-    emqx_bridge_sup:create_bridge(BridgeName, Options),
+    emqx_bridge_mqtt_sup:create_bridge(BridgeName, Options),
     #{<<"bridge_name">> => BridgeName}.
 
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
 on_get_resource_status(_ResId, #{<<"bridge_name">> := BridgeName}) ->
-    IsAlive = try emqx_bridge:status(BridgeName) of
+    IsAlive = try emqx_bridge_mqtt:status(BridgeName) of
                       connected -> true;
                       _ -> false
               catch _Error:_Reason ->
@@ -414,7 +417,7 @@ on_get_resource_status(_ResId, #{<<"bridge_name">> := BridgeName}) ->
 
 on_resource_destroy(ResId, #{<<"bridge_name">> := BridgeName}) ->
     ?LOG(info, "Destroying Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
-    case emqx_bridge_sup:drop_bridge(BridgeName) of
+    case emqx_bridge_mqtt_sup:drop_bridge(BridgeName) of
         ok ->
             ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
         {error, Reason} ->
@@ -424,7 +427,7 @@ on_resource_destroy(ResId, #{<<"bridge_name">> := BridgeName}) ->
 
 on_action_create_data_to_mqtt_broker(_Id, #{<<"bridge_name">> := BridgeName, <<"forward">> := Forward}) ->
     ?LOG(info, "Initiating Action ~p, Exchange: ~p", [?FUNCTION_NAME]),
-    ok = emqx_bridge:ensure_forward_present(BridgeName, Forward),
+    ok = emqx_bridge_mqtt:ensure_forward_present(BridgeName, Forward),
     fun(Msg, _Env) ->
             BrokerMsg = emqx_message:make(rule_action, Forward, format_data(Msg)),
             emqx_broker:publish(BrokerMsg)
@@ -445,7 +448,7 @@ tls_versions(Versions) ->
     end.
 
 ciphers(Ciphers) ->
-    string:tokens(Ciphers, ", ").
+    string:tokens(str(Ciphers), ", ").
 
 subscriptions(Subscriptions) ->
     scan_binary(<<"[", Subscriptions/binary, "].">>).
@@ -458,7 +461,8 @@ psk_ciphers(PskCiphers) ->
          ("PSK-RC4-SHA") -> {psk, rc4_128, sha}
       end, string:tokens(str(PskCiphers), ", ")).
     
-is_node_addr(Addr) ->
+is_node_addr(Addr0) ->
+    Addr = binary_to_list(Addr0),
     case string:tokens(Addr, "@") of
         [_NodeName, _Hostname] -> true;
         _ -> false

@@ -21,8 +21,8 @@
 -export([start/2, stop/1]).
 
 start(_StartType, _StartArgs) ->
-    emqx_bridge:register_metrics(),
-    emqx_bridge_sup:start_link().
+    emqx_bridge_mqtt:register_metrics(),
+    emqx_bridge_mqtt_sup:start_link().
 
 stop(_State) ->
     ok.
