@@ -159,7 +159,7 @@ ensure_started(Name) ->
 ensure_started(Name, Config) ->
     case start_link(Name, Config) of
         {ok, Pid} -> {ok, Pid};
-        {error, {already_started,Pid}} -> {ok, Pid}
+        {error, {already_started, Pid}} -> {ok, Pid}
     end.
 
 %% @doc Manually stop bridge worker. State idempotency ensured.

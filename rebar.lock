@@ -12,7 +12,7 @@
   0},
  {<<"emqx_rule_engine">>,
   {git,"https://github.com/emqx/emqx-rule-engine",
-       {ref,"5b8d11d512428fa6a1174aabef9ab9676760455e"}},
+       {ref,"9247f5e67c7c121e74d4c16c931c57083a1810b6"}},
   0},
  {<<"esockd">>,{pkg,<<"esockd">>,<<"5.5.0">>},1},
  {<<"gen_rpc">>,

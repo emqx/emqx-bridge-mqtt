@@ -32,13 +32,13 @@
 
 -define(RESOURCE_CONFIG_SPEC,
         #{bridge_name => #{order => 1,
-                    type => string,
-                    required => true,
-                    default => <<"aws">>,
-                    title => #{en => <<"MQTT Bridge Name">>,
-                               zh => <<"MQTT 桥接名称"/utf8>>
-                              }
-                   },
+                           type => string,
+                           required => true,
+                           default => <<"aws">>,
+                           title => #{en => <<"MQTT Bridge Name">>,
+                                      zh => <<"MQTT 桥接名称"/utf8>>
+                                     }
+                          },
           address => #{order => 2,
                        type => string,
                        required => true,
@@ -51,13 +51,13 @@
                                                 "for emqx node">>,
                                         zh => <<"远程 MQTT Broker 的 IP 地址或主机名<br/>"
                                                 "注：当地址名为 `emqx@127.0.0.1` 这一形式时，"
-                                                "桥接会以 rpc 的形式来创建， rpc 桥接仅限于 emqx 节点"/utf8>>
+                                                "桥接会以 rpc 的形式来创建， rpc 桥接仅限于桥接 emqx 节点"/utf8>>
                                        }
                       },
           proto_ver => #{order => 3,
                          type => string,
                          required => false,
-                         default => <<"MQTTv4">>,
+                         default => <<"mqttv4">>,
                          title => #{en => <<"Protocol Version">>,
                                     zh => <<"协议版本"/utf8>>},
                          description => #{en => <<"Protocol version for MQTT bridge"
@@ -261,7 +261,7 @@
                                  description => #{en => <<"Base directory for replayq to store messages on disk. "
                                                           "If this config entry is missing or set to undefined,",
                                                           "replayq works in a mem-only manner.">>,
-                                                  zh => <<"一次 batch 所收集的最大数量的消息数"/utf8>>}
+                                                  zh => <<"replayq 在磁盘上存储消息的基本目录, 如果没有设置该值, 那么 replayq 将会采取 mem-only 模式"/utf8>>}
                                 },
           queue_batch_count_limit => #{order => 23,
                                        type => number,
@@ -405,16 +405,24 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                {subscriptions, subscriptions(Subscriptions)}
               ],
     emqx_bridge_mqtt_sup:create_bridge(BridgeName, Options),
+    ok = emqx_bridge_mqtt:ensure_started(BridgeName),
+    case test_resource_status(BridgeName) of
+        true -> ok;
+        false -> error({{?RESOURCE_TYPE_MQTT, ResId}, connection_failed})
+    end,
     #{<<"bridge_name">> => BridgeName}.
+
+test_resource_status(BridgeName) ->
+    try emqx_bridge_mqtt:status(BridgeName) of
+        connected -> true;
+        _ -> false
+    catch _Error:_Reason ->
+            false
+    end.
 
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
 on_get_resource_status(_ResId, #{<<"bridge_name">> := BridgeName}) ->
-    IsAlive = try emqx_bridge_mqtt:status(BridgeName) of
-                      connected -> true;
-                      _ -> false
-              catch _Error:_Reason ->
-                      false
-              end,
+    IsAlive = test_resource_status(BridgeName),
     #{is_alive => IsAlive}.
 
 on_resource_destroy(ResId, #{<<"bridge_name">> := BridgeName}) ->
