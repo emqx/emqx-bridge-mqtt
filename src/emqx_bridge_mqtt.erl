@@ -189,10 +189,8 @@ ensure_stopped(Id, Timeout) ->
 
 stop(Pid) -> gen_statem:stop(Pid).
 
-status(Pid) when is_pid(Pid) ->
-    gen_statem:call(Pid, status);
 status(Id) ->
-    status(name(Id)).
+    gen_statem:call(name(Id), status).
 
 %% @doc This function is to be evaluated on message/batch receiver side.
 -spec import_batch(batch(), fun(() -> ok)) -> ok.

@@ -362,14 +362,14 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
     application:ensure_all_started(emqx_bridge_mqtt),
     BridgeName = binary_to_atom(Name, utf8),
     Options = [{address, case is_node_addr(Address) of
-                             true -> erlang:list_to_atom(Address);
-                             false -> Address
+                             true -> binary_to_atom(Address, utf8);
+                             false -> binary_to_list(Address)
                          end},
                {clean_start, CleanStart},
                {client_id, ClientId},
                {connect_module, case is_node_addr(Address) of
                                     true -> emqx_bridge_mqtt_rpc;
-                                    false -> emqx_bridge_mqtt
+                                    false -> emqx_bridge_mqtt_mqtt
                                 end},
                {forwards, string:tokens(str(Forwards), ", ")},
                {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
@@ -383,10 +383,12 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                                <<"mqttv5">> -> v5;
                                _ -> v4
                            end},
-               {queue, #{batch_bytes_limit => QueueBatchBytesLimit,
+               {queue, #{batch_bytes_limit =>
+                             cuttlefish_bytesize:parse(str(QueueBatchBytesLimit)),
                          batch_count_limit => QueueBatchCountLimit,
-                         replayq_dir => QueueReplayqDir,
-                         replayq_seg_bytes => QueueSegBytes}},
+                         replayq_dir => str(QueueReplayqDir),
+                         replayq_seg_bytes =>
+                             cuttlefish_bytesize:parse(str(QueueSegBytes))}},
                {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
                {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
                {ssl, cuttlefish_flag:parse(str(SslFlag))},

@@ -52,7 +52,7 @@ init(?SUP) ->
 
 bridge_spec({Name, Config}) ->
     #{id => Name,
-      start => {emqx_bridge, start_link, [Name, Config]},
+      start => {emqx_bridge_mqtt, start_link, [Name, Config]},
       restart => permanent,
       shutdown => 5000,
       type => worker,
