@@ -189,6 +189,8 @@ ensure_stopped(Id, Timeout) ->
 
 stop(Pid) -> gen_statem:stop(Pid).
 
+status(Pid) when is_pid(Pid) ->
+    gen_statem:call(Pid, status);
 status(Id) ->
     gen_statem:call(name(Id), status).
 
