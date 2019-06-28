@@ -198,7 +198,7 @@ status(Id) ->
 -spec import_batch(batch(), fun(() -> ok)) -> ok.
 import_batch(Batch, AckFun) ->
     PublishMsg = fun(Msg) ->
-                         emqx_metrics:inc('bridge.mqtt.message_received'),
+                         %% emqx_metrics:inc('bridge.mqtt.message_received'),
                          emqx_broker:publish(Msg)
                  end,
     lists:foreach(PublishMsg, emqx_bridge_mqtt_msg:to_broker_msgs(Batch)),
@@ -601,7 +601,7 @@ maybe_send(#{connect_module := Module,
              mountpoint := Mountpoint
             }, Batch) ->
     ExportMsg = fun(Message) ->
-                    emqx_metrics:inc('bridge.mqtt.message_sent'),
+                    %% emqx_metrics:inc('bridge.mqtt.message_sent'),
                     emqx_bridge_mqtt_msg:to_export(Module, Mountpoint, Message)
                 end,
     Module:send(Connection, [ExportMsg(M) || M <- Batch]).
