@@ -26,6 +26,9 @@
         , on_resource_destroy/2
         ]).
 
+%% Callbacks of ecpool Worker
+-export([connect/1]).
+
 -export([subscriptions/1]).
 
 -export([on_action_create_data_to_mqtt_broker/2]).
@@ -329,9 +332,11 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                             <<"queue_seg_bytes">> := QueueSegBytes
                            }) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
-    application:ensure_all_started(emqx_bridge_mqtt),
+    {ok, _} = application:ensure_all_started(emqx_bridge_mqtt),
+    {ok, _} = application:ensure_all_started(ecpool),
     BridgeName = binary_to_atom(Name, utf8),
-    Options = [{address, case is_node_addr(Address) of
+    Options = [{bridge_name, BridgeName},
+               {address, case is_node_addr(Address) of
                              true -> binary_to_atom(Address, utf8);
                              false -> binary_to_list(Address)
                          end},
@@ -370,32 +375,47 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                  {certfile, str(Certfile)},
                  {cacertfile, str(Cacertfile)}
                 ]},
-               {start_type, auto}
+               {start_type, auto},
+               {pool_size, 1}
               ],
-    emqx_bridge_mqtt_sup:create_bridge(BridgeName, Options),
-    ok = emqx_bridge_mqtt:ensure_started(BridgeName),
+    PoolName = pool_name(ResId),
+    start_resource(ResId, PoolName, Options),
     case test_resource_status(BridgeName) of
         true -> ok;
         false -> error({{?RESOURCE_TYPE_MQTT, ResId}, connection_failed})
     end,
-    #{<<"bridge_name">> => BridgeName}.
+    #{<<"pool">> => PoolName}.
 
-test_resource_status(BridgeName) ->
-    try emqx_bridge_mqtt:status(BridgeName) of
-        connected -> true;
-        _ -> false
-    catch _Error:_Reason ->
-            false
+start_resource(ResId, PoolName, Options) ->
+    case ecpool:start_sup_pool(PoolName, ?MODULE, Options) of
+        {ok, _} ->
+            ?LOG(info, "Initiated Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
+        {error, {already_started, _Pid}} ->
+            on_resource_destroy(ResId, #{<<"pool">> => PoolName}),
+            start_resource(ResId, PoolName, Options);
+        {error, Reason} ->
+            ?LOG(error, "Initiate Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
+            error({{?RESOURCE_TYPE_MQTT, ResId}, create_failed})
     end.
 
+test_resource_status(PoolName) ->
+    ecpool:with_client(PoolName, fun(Bridge) ->
+                                         try emqx_bridge_mqtt:status(Bridge) of
+                                             connected -> true;
+                                             _ -> false
+                                         catch _Error:_Reason ->
+                                                 false
+                                         end
+                                 end).
+
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
-on_get_resource_status(_ResId, #{<<"bridge_name">> := BridgeName}) ->
-    IsAlive = test_resource_status(BridgeName),
+on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
+    IsAlive = test_resource_status(PoolName),
     #{is_alive => IsAlive}.
 
-on_resource_destroy(ResId, #{<<"bridge_name">> := BridgeName}) ->
+on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Destroying Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
-    case emqx_bridge_mqtt_sup:drop_bridge(BridgeName) of
+        case ecpool:stop_sup_pool(PoolName) of
         ok ->
             ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
         {error, Reason} ->
@@ -403,7 +423,7 @@ on_resource_destroy(ResId, #{<<"bridge_name">> := BridgeName}) ->
             error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
     end.
 
-on_action_create_data_to_mqtt_broker(_Id, #{<<"bridge_name">> := BridgeName}) ->
+on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
     fun(Msg, _Env = #{id := Id, from := From, flags := Flags,
                       topic := Topic, timestamp := TimeStamp}) ->
@@ -414,8 +434,9 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"bridge_name">> := BridgeName}) ->
                                  topic = Topic,
                                  payload = format_data(Msg),
                                  timestamp = TimeStamp},
-            BridgePid = global_group:whereis_name(BridgeName),
-            BridgePid ! {dispatch, rule_engine, BrokerMsg}
+            ecpool:with_client(PoolName, fun(BridgePid) ->
+                                             BridgePid ! {dispatch, rule_engine, BrokerMsg}
+                                     end)
     end.
 
 format_data(Msg) ->
@@ -462,3 +483,9 @@ scan_string(TermString) ->
     {ok, Term} = erl_parse:parse_term(Tokens),
     Term.
 
+connect(Options) ->
+    BridgeName = proplists:get_value(bridge_name, Options),
+    emqx_bridge_mqtt:start_link(BridgeName, Options).
+
+pool_name(ResId) ->
+    list_to_atom("bridge_mqtt:" ++ str(ResId)).

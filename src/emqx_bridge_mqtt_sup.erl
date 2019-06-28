@@ -13,7 +13,7 @@
 %% limitations under the License.
 
 -module(emqx_bridge_mqtt_sup).
--behavior(supervisor).
+-behaviour(supervisor).
 
 -include("emqx_bridge_mqtt.hrl").
 -include_lib("emqx/include/logger.hrl").
