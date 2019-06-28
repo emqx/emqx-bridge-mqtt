@@ -15,6 +15,7 @@
 -module(emqx_bridge_sup).
 -behavior(supervisor).
 
+-include("emqx_bridge_mqtt.hrl").
 -include_lib("emqx/include/logger.hrl").
 
 -logger_header("[Bridge]").
@@ -42,7 +43,7 @@ start_link(Name) ->
     supervisor:start_link({local, Name}, ?MODULE, Name).
 
 init(?SUP) ->
-    BridgesConf = emqx_config:get_env(bridges, []),
+    BridgesConf = application:get_env(?APP, bridges, []),
     BridgeSpec = lists:map(fun bridge_spec/1, BridgesConf),
     SupFlag = #{strategy => one_for_one,
                 intensity => 100,

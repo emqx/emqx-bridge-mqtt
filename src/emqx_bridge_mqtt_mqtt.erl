@@ -14,7 +14,7 @@
 
 %% @doc This module implements EMQX Bridge transport layer on top of MQTT protocol
 
--module(emqx_bridge_mqtt).
+-module(emqx_bridge_mqtt_mqtt).
 
 -behaviour(emqx_bridge_connect).
 

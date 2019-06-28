@@ -14,7 +14,8 @@
 
 %% @doc This module implements EMQX Bridge transport layer based on gen_rpc.
 
--module(emqx_bridge_rpc).
+-module(emqx_bridge_mqtt_rpc).
+
 -behaviour(emqx_bridge_connect).
 
 %% behaviour callbacks
