@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_mqtt_msg).
+-module(emqx_bridge_msg).
 
 -export([ to_binary/1
         , from_binary/1
@@ -37,9 +37,9 @@
 %% Shame that we have to know the callback module here
 %% would be great if we can get rid of #mqtt_msg{} record
 %% and use #message{} in all places.
--spec to_export(emqx_bridge_mqtt_rpc | emqx_bridge_mqtt,
+-spec to_export(emqx_bridge_rpc | emqx_bridge_worker,
                 undefined | binary(), msg()) -> exp_msg().
-to_export(emqx_bridge_mqtt_mqtt, Mountpoint,
+to_export(emqx_bridge_mqtt, Mountpoint,
           #message{topic = Topic,
                    payload = Payload,
                    flags = Flags

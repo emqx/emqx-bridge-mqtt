@@ -22,7 +22,7 @@
 
 start(_StartType, _StartArgs) ->
     emqx_ctl:register_command(bridges, {emqx_bridge_mqtt_cli, cli}, []),
-    emqx_bridge_mqtt:register_metrics(),
+    emqx_bridge_worker:register_metrics(),
     emqx_bridge_mqtt_sup:start_link().
 
 stop(_State) ->

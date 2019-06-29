@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_mqtt_connect).
+-module(emqx_bridge_connect).
 
 -export([start/2]).
 
@@ -25,7 +25,7 @@
 -type connection() :: term().
 -type conn_ref() :: term().
 -type batch() :: emqx_protal:batch().
--type ack_ref() :: emqx_bridge_mqtt:ack_ref().
+-type ack_ref() :: emqx_bridge_worker:ack_ref().
 -type topic() :: emqx_topic:topic().
 -type qos() :: emqx_mqtt_types:qos().
 -type is_record_metrics() :: boolean().

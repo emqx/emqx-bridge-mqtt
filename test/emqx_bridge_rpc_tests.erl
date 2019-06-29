@@ -12,7 +12,7 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(emqx_bridge_mqtt_rpc_tests).
+-module(emqx_bridge_rpc_tests).
 -include_lib("eunit/include/eunit.hrl").
 
 send_and_ack_test() ->
@@ -26,18 +26,18 @@ send_and_ack_test() ->
                 fun(Node, Module, Fun, Args) ->
                         rpc:cast(Node, Module, Fun, Args)
                 end),
-    meck:new(emqx_bridge_mqtt, [passthrough, no_history]),
-    meck:expect(emqx_bridge_mqtt, import_batch, 3,
+    meck:new(emqx_bridge_worker, [passthrough, no_history]),
+    meck:expect(emqx_bridge_worker, import_batch, 3,
                 fun(batch, AckFun, _IfRecordMetrics) -> AckFun() end),
     try
-        {ok, Pid, Node} = emqx_bridge_mqtt_rpc:start(#{address => node(), if_record_metrics => true}),
-        {ok, Ref} = emqx_bridge_mqtt_rpc:send(Node, batch, true),
+        {ok, Pid, Node} = emqx_bridge_rpc:start(#{address => node(), if_record_metrics => true}),
+        {ok, Ref} = emqx_bridge_rpc:send(Node, batch, true),
         receive
             {batch_ack, Ref} ->
                 ok
         end,
-        ok = emqx_bridge_mqtt_rpc:stop(Pid, Node)
+        ok = emqx_bridge_rpc:stop(Pid, Node)
     after
         meck:unload(gen_rpc),
-        meck:unload(emqx_bridge_mqtt)
+        meck:unload(emqx_bridge_worker)
     end.

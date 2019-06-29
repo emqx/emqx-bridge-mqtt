@@ -52,15 +52,15 @@ init(?SUP) ->
 
 bridge_spec({Name, Config}) ->
     #{id => Name,
-      start => {emqx_bridge_mqtt, start_link, [Name, Config]},
+      start => {emqx_bridge_worker, start_link, [Name, Config]},
       restart => permanent,
       shutdown => 5000,
       type => worker,
-      modules => [emqx_bridge_mqtt]}.
+      modules => [emqx_bridge_worker]}.
 
 -spec(bridges() -> [{node(), map()}]).
 bridges() ->
-    [{Name, emqx_bridge_mqtt:status(Pid)} || {Name, Pid, _, _} <- supervisor:which_children(?SUP)].
+    [{Name, emqx_bridge_worker:status(Pid)} || {Name, Pid, _, _} <- supervisor:which_children(?SUP)].
 
 -spec(is_bridge_exist(atom() | pid()) -> boolean()).
 is_bridge_exist(Id) ->

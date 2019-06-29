@@ -81,7 +81,7 @@
                          description => #{en => <<"Client Id for connecting to MQTT Broker"
                                                   "(Only for bridge with MQTT protocol)">>,
                                           zh => <<"用于桥接 MQTT Broker 的 Client Id"
-                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>} 
+                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
                         },
           username => #{order => 5,
                         type => string,
@@ -101,7 +101,7 @@
                         description => #{en => <<"Password for connecting to MQTT Broker"
                                                  "(Only for bridge with MQTT protocol)">>,
                                          zh => <<"用于桥接 MQTT Broker 的密码"
-                                                 "（仅适用于 MQTT 协议桥接）"/utf8>>}          
+                                                 "（仅适用于 MQTT 协议桥接）"/utf8>>}
                        },
           mountpoint => #{order => 7,
                           type => string,
@@ -256,8 +256,8 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                {clean_start, true},
                {client_id, ClientId},
                {connect_module, case is_node_addr(Address) of
-                                    true -> emqx_bridge_mqtt_rpc;
-                                    false -> emqx_bridge_mqtt_mqtt
+                                    true -> emqx_bridge_rpc;
+                                    false -> emqx_bridge_mqtt
                                 end},
                {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
                {max_inflight_batches, 32},
@@ -312,7 +312,7 @@ start_resource(ResId, PoolName, Options) ->
 
 test_resource_status(PoolName) ->
     ecpool:with_client(PoolName, fun(Bridge) ->
-                                         try emqx_bridge_mqtt:status(Bridge) of
+                                         try emqx_bridge_worker:status(Bridge) of
                                              connected -> true;
                                              _ -> false
                                          catch _Error:_Reason ->
@@ -384,7 +384,7 @@ scan_string(TermString) ->
 
 connect(Options) ->
     BridgeName = proplists:get_value(bridge_name, Options),
-    emqx_bridge_mqtt:start_link(BridgeName, Options).
+    emqx_bridge_worker:start_link(BridgeName, Options).
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
