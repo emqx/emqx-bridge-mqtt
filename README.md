@@ -1,2 +1,9 @@
-# emqx-bridge-mqtt
-Bridge of MQTT
+emqx-bridge-mqtt
+=====
+
+EMQ X emqx-bridge-mqtt
+
+Build
+-----
+
+    $ rebar3 compile

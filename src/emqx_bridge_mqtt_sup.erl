@@ -15,21 +15,68 @@
 -module(emqx_bridge_mqtt_sup).
 -behaviour(supervisor).
 
--export([start_link/0]).
+-include("emqx_bridge_mqtt.hrl").
+-include_lib("emqx/include/logger.hrl").
+
+-logger_header("[Bridge]").
+
+%% APIs
+-export([ start_link/0
+        , start_link/1
+        ]).
+
+-export([ create_bridge/2
+        , drop_bridge/1
+        , bridges/0
+        , is_bridge_exist/1
+        ]).
+
+%% supervisor callbacks
 -export([init/1]).
 
-start_link() ->
-	supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+-define(SUP, ?MODULE).
+-define(WORKER_SUP, emqx_bridge_worker_sup).
 
-init([]) ->
-    Worker= #{id       => emqx_bridge_mqtt_worker,
-              start    => {emqx_bridge_mqtt_worker, start_link, []},
-              restart  => permanent,
-              shutdown => 5000,
-              type     => worker,
-              modules  => [emqx_bridge_mqtt_worker]}, 
-	{ok, {{one_for_one, 1, 5}, [Worker]}}.
+start_link() -> start_link(?SUP).
 
-%%------------------------------------------------------------------------------
-%% Interval Funcs
-%%------------------------------------------------------------------------------
+start_link(Name) ->
+    supervisor:start_link({local, Name}, ?MODULE, Name).
+
+init(?SUP) ->
+    BridgesConf = application:get_env(?APP, bridges, []),
+    BridgeSpec = lists:map(fun bridge_spec/1, BridgesConf),
+    SupFlag = #{strategy => one_for_one,
+                intensity => 100,
+                period => 10},
+    {ok, {SupFlag, BridgeSpec}}.
+
+bridge_spec({Name, Config}) ->
+    #{id => Name,
+      start => {emqx_bridge_worker, start_link, [Name, Config]},
+      restart => permanent,
+      shutdown => 5000,
+      type => worker,
+      modules => [emqx_bridge_worker]}.
+
+-spec(bridges() -> [{node(), map()}]).
+bridges() ->
+    [{Name, emqx_bridge_worker:status(Pid)} || {Name, Pid, _, _} <- supervisor:which_children(?SUP)].
+
+-spec(is_bridge_exist(atom() | pid()) -> boolean()).
+is_bridge_exist(Id) ->
+    case supervisor:get_childspec(?SUP, Id) of
+        {ok, _ChildSpec} -> true;
+        {error, _Error} -> false
+    end.
+
+create_bridge(Id, Config) ->
+    supervisor:start_child(?SUP, bridge_spec({Id, Config})).
+
+drop_bridge(Id) ->
+    case supervisor:terminate_child(?SUP, Id) of
+        ok ->
+            supervisor:delete_child(?SUP, Id);
+        {error, Error} ->
+            ?LOG(error, "Delete bridge failed, error : ~p", [Error]),
+            {error, Error}
+    end.
