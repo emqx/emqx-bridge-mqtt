@@ -42,8 +42,7 @@ cli(["start", Name]) ->
 cli(["stop", Name]) ->
     emqx_cli:print("~s.~n", [try emqx_bridge_mqtt:ensure_stopped(Name) of
                                  ok -> <<"Stop bridge successfully">>;
-                                 standing_by -> <<"Bridge already started">>;
-                                 _ -> <<"Stop bridge failed]">>
+                                 _ -> <<"Stop bridge failed">>
                              catch
                                  _Error:_Reason ->
                                      <<"Stop bridge failed">>
