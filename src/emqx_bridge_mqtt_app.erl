@@ -26,5 +26,6 @@ start(_StartType, _StartArgs) ->
     emqx_bridge_mqtt_sup:start_link().
 
 stop(_State) ->
+    emqx_ctl:unregister_command(bridges),
     ok.
 
