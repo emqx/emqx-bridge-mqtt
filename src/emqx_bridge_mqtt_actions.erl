@@ -34,8 +34,9 @@
 -export([on_action_create_data_to_mqtt_broker/2]).
 
 -define(RESOURCE_TYPE_MQTT, 'bridge_mqtt').
+-define(RESOURCE_TYPE_RPC, 'bridge_rpc').
 
--define(RESOURCE_CONFIG_SPEC,
+-define(RESOURCE_CONFIG_SPEC_MQTT,
         #{bridge_name => #{order => 1,
                            type => string,
                            required => true,
@@ -48,15 +49,10 @@
                        type => string,
                        required => true,
                        default => <<"127.0.0.1:1883">>,
-                       title => #{en => <<"Bridge Address">>,
+                       title => #{en => <<"Broker Address">>,
                                   zh => <<"桥接地址"/utf8>>},
-                       description => #{en => <<"IP Address or Host Name of the MQTT remote host<br/>"
-                                                "Note: When the address is the format like `emqx@127.0.0.1`"
-                                                "Bridge will be created with rpc, and the rpc bridge is only"
-                                                "for emqx node">>,
-                                        zh => <<"远程 MQTT Broker 的 IP 地址或主机名<br/>"
-                                                "注：当地址名为 `emqx@127.0.0.1` 这一形式时，"
-                                                "桥接会以 rpc 的形式来创建， rpc 桥接仅限于桥接 emqx 节点"/utf8>>
+                       description => #{en => <<"The MQTT Remote IP Address">>,
+                                        zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>
                                        }
                       },
           proto_ver => #{order => 3,
@@ -198,6 +194,50 @@
                       }
          }).
 
+-define(RESOURCE_CONFIG_SPEC_RPC,
+        #{bridge_name => #{order => 1,
+                           type => string,
+                           required => true,
+                           default => <<"aws">>,
+                           title => #{en => <<"Bridge Name">>,
+                                      zh => <<"桥接名称"/utf8>>
+                                     }
+                          },
+          address => #{order => 2,
+                       type => string,
+                       required => true,
+                       default => <<"emqx2@127.0.0.1">>,
+                       title => #{en => <<"EMQX Node Name">>,
+                                  zh => <<"EMQX 节点名称"/utf8>>},
+                       description => #{en => <<"EMQX remote NodeName">>,
+                                        zh => <<"远程 EMQX 节点名称 "/utf8>>
+                                       }
+                      },
+          mountpoint => #{order => 3,
+                          type => string,
+                          required => true,
+                          default => <<"bridge/aws/${node}/">>,
+                          title => #{en => <<"Bridge MountPoint">>,
+                                     zh => <<"桥接挂载点"/utf8>>},
+                          description => #{en => <<"MountPoint for bridge topic<br/>"
+                                                   "Example: The topic of messages sent to `topic1` on local node"
+                                                   "will be transformed to `bridge/aws/${node}/topic1`">>,
+                                           zh => <<"桥接主题的挂载点<br/>"
+                                                   "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
+                                                   "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
+                                          }
+                         },
+          retry_interval => #{order => 4,
+                              type => string,
+                              required => false,
+                              default => <<"20s">>,
+                              title => #{en => <<"Retry interval">>,
+                                         zh => <<"重传间隔"/utf8>>},
+                              description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
+                                               zh => <<"QoS1 消息重传间隔"/utf8>>}
+                             }
+         }).
+
 -define(ACTION_PARAM_RESOURCE,
         #{type => string,
           required => true,
@@ -211,9 +251,18 @@
                  create => on_resource_create,
                  status => on_get_resource_status,
                  destroy => on_resource_destroy,
-                 params => ?RESOURCE_CONFIG_SPEC,
-                 title => #{en => <<"MQTT Broker">>, zh => <<"MQTT Broker"/utf8>>},
-                 description => #{en => <<"MQTT Resource">>, zh => <<"MQTT 资源"/utf8>>}
+                 params => ?RESOURCE_CONFIG_SPEC_MQTT,
+                 title => #{en => <<"MQTT Bridge">>, zh => <<"MQTT Bridge"/utf8>>},
+                 description => #{en => <<"MQTT Message Bridge">>, zh => <<"MQTT 消息桥接"/utf8>>}
+                }).
+
+-resource_type(#{name => ?RESOURCE_TYPE_RPC,
+                 create => on_resource_create,
+                 status => on_get_resource_status,
+                 destroy => on_resource_destroy,
+                 params => ?RESOURCE_CONFIG_SPEC_RPC,
+                 title => #{en => <<"RPC Bridge">>, zh => <<"RPC Bridge"/utf8>>},
+                 description => #{en => <<"EMQX RPC Bridge">>, zh => <<"EMQX RPC 消息桥接"/utf8>>}
                 }).
 
 -rule_action(#{name => data_to_mqtt_broker,
@@ -229,65 +278,10 @@
                                }
               }).
 
-on_resource_create(ResId, #{<<"bridge_name">> := Name,
-                            <<"address">> := Address,
-                            <<"proto_ver">> := ProtoVer,
-                            <<"client_id">> := ClientId,
-                            <<"username">> := Username,
-                            <<"password">> := Password,
-                            <<"mountpoint">> := MountPoint,
-                            <<"ssl">> := SslFlag,
-                            <<"cacertfile">> := Cacertfile,
-                            <<"certfile">> := Certfile,
-                            <<"keyfile">> := Keyfile,
-                            <<"ciphers">> := Ciphers,
-                            <<"keepalive">> := KeepAlive,
-                            <<"reconnect_interval">> := ReconnectInterval,
-                            <<"retry_interval">> := RetryInterval
-                           }) ->
+on_resource_create(ResId, Params) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
     {ok, _} = application:ensure_all_started(ecpool),
-    BridgeName = binary_to_atom(Name, utf8),
-    Options = [{bridge_name, BridgeName},
-               {address, case is_node_addr(Address) of
-                             true -> binary_to_atom(Address, utf8);
-                             false -> binary_to_list(Address)
-                         end},
-               {clean_start, true},
-               {client_id, ClientId},
-               {connect_module, case is_node_addr(Address) of
-                                    true -> emqx_bridge_rpc;
-                                    false -> emqx_bridge_mqtt
-                                end},
-               {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
-               {max_inflight_batches, 32},
-               {mountpoint, str(MountPoint)},
-               {username, str(Username)},
-               {password, str(Password)},
-               {proto_ver, case ProtoVer of
-                               <<"mqttv3">> -> v3;
-                               <<"mqttv4">> -> v4;
-                               <<"mqttv5">> -> v5;
-                               _ -> v4
-                           end},
-               {queue, #{batch_bytes_limit => 1048576000,
-                         batch_count_limit => 32,
-                         replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
-                         replayq_seg_bytes => 10485760}},
-               {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
-               {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
-               {ssl, cuttlefish_flag:parse(str(SslFlag))},
-               {ssl_opts,
-                [{versions, tls_versions()},
-                 {ciphers, ciphers(Ciphers)},
-                 {keyfile, str(Keyfile)},
-                 {certfile, str(Certfile)},
-                 {cacertfile, str(Cacertfile)}
-                ]},
-               {start_type, auto},
-               {if_record_metrics, false},
-               {pool_size, 1}
-              ],
+    Options = options(Params),
     PoolName = pool_name(ResId),
     start_resource(ResId, PoolName, Options),
     case test_resource_status(PoolName) of
@@ -388,3 +382,71 @@ connect(Options) ->
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
+
+options(#{<<"bridge_name">> := Name,
+          <<"address">> := Address,
+          <<"proto_ver">> := ProtoVer,
+          <<"client_id">> := ClientId,
+          <<"username">> := Username,
+          <<"password">> := Password,
+          <<"mountpoint">> := MountPoint,
+          <<"ssl">> := SslFlag,
+          <<"cacertfile">> := Cacertfile,
+          <<"certfile">> := Certfile,
+          <<"keyfile">> := Keyfile,
+          <<"ciphers">> := Ciphers,
+          <<"keepalive">> := KeepAlive,
+          <<"reconnect_interval">> := ReconnectInterval,
+          <<"retry_interval">> := RetryInterval}) ->
+    BridgeName = binary_to_atom(Name, utf8),
+    case is_node_addr(Address) of
+        true ->
+            [{bridge_name, BridgeName},
+             {address, binary_to_atom(Address, utf8)},
+             {connect_module, emqx_bridge_rpc},
+             {max_inflight_batches, 32},
+             {mountpoint, str(MountPoint)},
+             {queue, #{batch_bytes_limit => 1048576000,
+                       batch_count_limit => 32,
+                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
+                       replayq_seg_bytes => 10485760}},
+             {start_type, auto},
+             {if_record_metrics, false},
+             {pool_size, 1}];
+        false ->
+            [{bridge_name, BridgeName},
+             {address, binary_to_list(Address)},
+             {clean_start, true},
+             {client_id, ClientId},
+             {connect_module, emqx_bridge_mqtt},
+             {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
+             {max_inflight_batches, 32},
+             {mountpoint, str(MountPoint)},
+             {username, str(Username)},
+             {password, str(Password)},
+             {proto_ver, mqtt_ver(ProtoVer)},
+             {queue, #{batch_bytes_limit => 1048576000,
+                       batch_count_limit => 32,
+                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
+                       replayq_seg_bytes => 10485760}},
+             {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
+             {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
+             {ssl, cuttlefish_flag:parse(str(SslFlag))},
+             {ssl_opts, [{versions, tls_versions()},
+                         {ciphers, ciphers(Ciphers)},
+                         {keyfile, str(Keyfile)},
+                         {certfile, str(Certfile)},
+                         {cacertfile, str(Cacertfile)}
+                        ]},
+             {start_type, auto},
+             {if_record_metrics, false},
+             {pool_size, 1}]
+    end.
+
+mqtt_ver(ProtoVer) ->
+    case ProtoVer of
+       <<"mqttv3">> -> v3;
+       <<"mqttv4">> -> v4;
+       <<"mqttv5">> -> v5;
+       _ -> v4
+   end.
