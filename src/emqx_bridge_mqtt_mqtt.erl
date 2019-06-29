@@ -20,7 +20,7 @@
 
 %% behaviour callbacks
 -export([ start/1
-        , send/2
+        , send/3
         , stop/2
         ]).
 
@@ -44,11 +44,11 @@
 %% emqx_bridge_mqtt_connect callbacks
 %%------------------------------------------------------------------------------
 
-start(Config = #{address := Address}) ->
+start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
     Ref = make_ref(),
     Parent = self(),
     AckCollector = spawn_link(fun() -> ack_collector(Parent, Ref) end),
-    Handlers = make_hdlr(Parent, AckCollector, Ref),
+    Handlers = make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics),
     {Host, Port} = case string:tokens(Address, ":") of
                        [H] -> {H, 1883};
                        [H, P] -> {H, list_to_integer(P)}
@@ -120,10 +120,10 @@ safe_stop(Pid, StopF, Timeout) ->
             exit(Pid, kill)
     end.
 
-send(Conn, Batch) ->
-    send(Conn, Batch, []).
+send(Conn, Batch, IfRecordMetrics) ->
+    send(Conn, Batch, [], IfRecordMetrics).
 
-send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Rest], Acc) ->
+send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Rest], Acc, IfRecordMetrics) ->
     case emqx_client:publish(ClientPid, Msg) of
         {ok, PktId} when Rest =:= [] ->
             %% last one sent
@@ -131,7 +131,7 @@ send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Re
             AckCollector ! ?SENT(?REF_IDS(Ref, lists:reverse([PktId | Acc]))),
             {ok, Ref};
         {ok, PktId} ->
-            send(Conn, Rest, [PktId | Acc]);
+            send(Conn, Rest, [PktId | Acc], IfRecordMetrics);
         {error, Reason} ->
             %% NOTE: There is no partial sucess of a batch and recover from the middle
             %% only to retry all messages in one batch
@@ -179,13 +179,13 @@ handle_puback(AckCollector, #{packet_id := PktId, reason_code := RC}) ->
     ok.
 
 %% Message published from remote broker. Import to local broker.
-import_msg(Msg) ->
+import_msg(Msg, IfRecordMetrics) ->
     %% auto-ack should be enabled in emqx_client, hence dummy ack-fun.
-    emqx_bridge_mqtt:import_batch([Msg], _AckFun = fun() -> ok end).
+    emqx_bridge_mqtt:import_batch([Msg], _AckFun = fun() -> ok end, IfRecordMetrics).
 
-make_hdlr(Parent, AckCollector, Ref) ->
+make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics) ->
     #{puback => fun(Ack) -> handle_puback(AckCollector, Ack) end,
-      publish => fun(Msg) -> import_msg(Msg) end,
+      publish => fun(Msg) -> import_msg(Msg, IfRecordMetrics) end,
       disconnected => fun(Reason) -> Parent ! {disconnected, Ref, Reason}, ok end
      }.
 

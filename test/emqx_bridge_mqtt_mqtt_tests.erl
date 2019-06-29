@@ -35,9 +35,9 @@ send_and_ack_test() ->
     try
         Max = 100,
         Batch = lists:seq(1, Max),
-        {ok, Ref, Conn} = emqx_bridge_mqtt_mqtt:start(#{address => "127.0.0.1:1883"}),
+        {ok, Ref, Conn} = emqx_bridge_mqtt_mqtt:start(#{address => "127.0.0.1:1883", if_record_metrics => true}),
         %% return last packet id as batch reference
-        {ok, AckRef} = emqx_bridge_mqtt_mqtt:send(Conn, Batch),
+        {ok, AckRef} = emqx_bridge_mqtt_mqtt:send(Conn, Batch, true),
         %% expect batch ack
         receive {batch_ack, AckRef} -> ok end,
         ok = emqx_bridge_mqtt_mqtt:stop(Ref, Conn)

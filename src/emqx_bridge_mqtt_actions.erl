@@ -285,6 +285,7 @@ on_resource_create(ResId, #{<<"bridge_name">> := Name,
                  {cacertfile, str(Cacertfile)}
                 ]},
                {start_type, auto},
+               {if_record_metrics, false},
                {pool_size, 1}
               ],
     PoolName = pool_name(ResId),

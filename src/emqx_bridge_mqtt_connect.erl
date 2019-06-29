@@ -28,6 +28,7 @@
 -type ack_ref() :: emqx_bridge_mqtt:ack_ref().
 -type topic() :: emqx_topic:topic().
 -type qos() :: emqx_mqtt_types:qos().
+-type is_record_metrics() :: boolean().
 
 -include_lib("emqx/include/logger.hrl").
 
@@ -41,7 +42,7 @@
 %% send to remote node/cluster
 %% bridge worker (the caller process) should be expecting
 %% a message {batch_ack, reference()} when batch is acknowledged by remote node/cluster
--callback send(connection(), batch()) -> {ok, ack_ref()} | {error, any()}.
+-callback send(connection(), batch(), is_record_metrics()) -> {ok, ack_ref()} | {error, any()}.
 
 %% called when owner is shutting down.
 -callback stop(conn_ref(), connection()) -> ok.

@@ -135,8 +135,8 @@ t_mqtt(Config) when is_list(Config) ->
     Tester = self(),
     Ref = make_ref(),
     meck:new(emqx_bridge_mqtt, [passthrough, no_history]),
-    meck:expect(emqx_bridge_mqtt, import_batch, 2,
-                fun(Batch, AckFun) ->
+    meck:expect(emqx_bridge_mqtt, import_batch, 3,
+                fun(Batch, AckFun, _IfRecordMetrics) ->
                         Tester ! {Ref, Batch},
                         AckFun()
                 end),

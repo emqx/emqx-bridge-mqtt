@@ -62,7 +62,7 @@
 
 %% APIs
 -export([ start_link/2
-        , import_batch/2
+        , import_batch/3
         , register_metrics/0
         , handle_ack/2
         , stop/1
@@ -195,11 +195,11 @@ status(Id) ->
     gen_statem:call(name(Id), status).
 
 %% @doc This function is to be evaluated on message/batch receiver side.
--spec import_batch(batch(), fun(() -> ok)) -> ok.
-import_batch(Batch, AckFun) ->
+-spec import_batch(batch(), fun(() -> ok), boolean()) -> ok.
+import_batch(Batch, AckFun, IfRecordMetric) ->
     PublishMsg = fun(Msg) ->
-                         %% emqx_metrics:inc('bridge.mqtt.message_received'),
-                         emqx_broker:publish(Msg)
+                     bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
+                     emqx_broker:publish(Msg)
                  end,
     lists:foreach(PublishMsg, emqx_bridge_mqtt_msg:to_broker_msgs(Batch)),
     AckFun().
@@ -266,6 +266,7 @@ init(Config) ->
                                               true = emqx_topic:validate({filter, T}),
                                               {T, QoS}
                                       end, Get(subscriptions, []))),
+    IfRecordMetrics = Get(if_record_metrics, true),
     ConnectModule = maps:get(connect_module, Config),
     ConnectConfig = maps:without([connect_module,
                                   queue,
@@ -273,7 +274,9 @@ init(Config) ->
                                   max_inflight_batches,
                                   mountpoint,
                                   forwards
-                                 ], Config#{subscriptions => Subs}),
+                                 ], Config#{subscriptions => Subs,
+                                            if_record_metrics => IfRecordMetrics}),
+
     ConnectFun = fun(SubsX) -> emqx_bridge_mqtt_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
     {ok, standing_by,
      #{connect_module => ConnectModule,
@@ -289,7 +292,8 @@ init(Config) ->
        replayq => Queue,
        inflight => [],
        connection => undefined,
-       bridge_handler => Get(bridge_handler, ?NO_BRIDGE_HANDLER)
+       bridge_handler => Get(bridge_handler, ?NO_BRIDGE_HANDLER),
+       if_record_metrics => IfRecordMetrics
       }}.
 
 code_change(_Vsn, State, Data, _Extra) ->
@@ -598,13 +602,19 @@ msg_marshaller(Msg) -> emqx_bridge_mqtt_msg:to_binary(Msg).
 %% Return {ok, SendAckRef} or {error, Reason}
 maybe_send(#{connect_module := Module,
              connection := Connection,
-             mountpoint := Mountpoint
+             mountpoint := Mountpoint,
+             if_record_metrics := IfRecordMetrics
             }, Batch) ->
     ExportMsg = fun(Message) ->
-                    %% emqx_metrics:inc('bridge.mqtt.message_sent'),
+                    bridges_metrics_inc(IfRecordMetrics, 'bridge.mqtt.message_sent'),
                     emqx_bridge_mqtt_msg:to_export(Module, Mountpoint, Message)
                 end,
-    Module:send(Connection, [ExportMsg(M) || M <- Batch]).
+    Module:send(Connection, [ExportMsg(M) || M <- Batch], IfRecordMetrics).
+
+bridges_metrics_inc(true, Metric) ->
+    emqx_metrics:inc(Metric);
+bridges_metrics_inc(_IsRecordMetric, _Metric) ->
+    ok.
 
 format_mountpoint(undefined) ->
     undefined;

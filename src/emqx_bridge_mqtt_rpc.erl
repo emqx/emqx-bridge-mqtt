@@ -20,12 +20,12 @@
 
 %% behaviour callbacks
 -export([ start/1
-        , send/2
+        , send/3
         , stop/2
         ]).
 
 %% Internal exports
--export([ handle_send/2
+-export([ handle_send/3
         , handle_ack/2
         , heartbeat/2
         ]).
@@ -60,21 +60,21 @@ stop(Pid, _Remote) when is_pid(Pid) ->
     ok.
 
 %% @doc Callback for `emqx_bridge_mqtt_connect' behaviour
--spec send(node(), batch()) -> {ok, ack_ref()} | {error, any()}.
-send(Remote, Batch) ->
+-spec send(node(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
+send(Remote, Batch, IfRecordMetric) ->
     Sender = self(),
-    case ?RPC:call(Remote, ?MODULE, handle_send, [Sender, Batch]) of
+    case ?RPC:call(Remote, ?MODULE, handle_send, [Sender, Batch, IfRecordMetric]) of
         {ok, Ref} -> {ok, Ref};
         {badrpc, Reason} -> {error, Reason}
     end.
 
 %% @doc Handle send on receiver side.
--spec handle_send(pid(), batch()) -> {ok, ack_ref()} | {error, any()}.
-handle_send(SenderPid, Batch) ->
+-spec handle_send(pid(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
+handle_send(SenderPid, Batch, IfRecordMetric) ->
     SenderNode = node(SenderPid),
     Ref = make_ref(),
     AckFun = fun() -> ?RPC:cast(SenderNode, ?MODULE, handle_ack, [SenderPid, Ref]), ok end,
-    case emqx_bridge_mqtt:import_batch(Batch, AckFun) of
+    case emqx_bridge_mqtt:import_batch(Batch, AckFun, IfRecordMetric) of
         ok -> {ok, Ref};
         Error -> Error
     end.

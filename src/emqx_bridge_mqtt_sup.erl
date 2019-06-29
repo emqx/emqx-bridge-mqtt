@@ -56,7 +56,7 @@ bridge_spec({Name, Config}) ->
       restart => permanent,
       shutdown => 5000,
       type => worker,
-      modules => [emqx_bridge]}.
+      modules => [emqx_bridge_mqtt]}.
 
 -spec(bridges() -> [{node(), map()}]).
 bridges() ->

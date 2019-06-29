@@ -31,7 +31,7 @@
         end).
 
 %% stub callbacks
--export([start/1, send/2, stop/2]).
+-export([start/1, send/3, stop/2]).
 
 start(#{connect_result := Result, test_pid := Pid, test_ref := Ref}) ->
     case is_pid(Pid) of
@@ -40,8 +40,8 @@ start(#{connect_result := Result, test_pid := Pid, test_ref := Ref}) ->
     end,
     Result.
 
-send(SendFun, Batch) when is_function(SendFun, 1) ->
-    SendFun(Batch).
+send(SendFun, Batch, IfRecordMetric) when is_function(SendFun, 2) ->
+    SendFun(Batch, IfRecordMetric).
 
 stop(_Ref, _Pid) -> ok.
 
@@ -86,7 +86,7 @@ test_buffer_when_disconnected() ->
     SenderMref = monitor(process, Sender),
     Receiver = spawn_link(fun() -> receive {bridge, Pid} -> receiver_loop(Pid, Nums, _Interval = 1) end end),
     ReceiverMref = monitor(process, Receiver),
-    SendFun = fun(Batch) ->
+    SendFun = fun(Batch, _IfRecordMetrics) ->
                       BatchRef = make_ref(),
                       Receiver ! {batch, BatchRef, Batch},
                       {ok, BatchRef}
