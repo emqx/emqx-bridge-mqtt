@@ -1,7 +1,7 @@
-emqx-bridge
+emqx-bridge-mqtt
 =====
 
-An OTP application
+EMQ X emqx-bridge-mqtt
 
 Build
 -----
