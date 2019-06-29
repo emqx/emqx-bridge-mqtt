@@ -1,37 +1,40 @@
-.PHONY: tests
+## shallow clone for speed
 
-PROJECT = emqx_bridge_mqtt
-PROJECT_DESCRIPTION = EMQ X MQTT Bridge
-PROJECT_VERSION = 0.0.1
+REBAR_GIT_CLONE_OPTIONS += --depth 1
+export REBAR_GIT_CLONE_OPTIONS
 
-NO_AUTOPATCH = cuttlefish
+REBAR = rebar3
 
-BUILD_DEPS = emqx cuttlefish
-dep_emqx        = git git@github.com:emqx/emqx-enterprise master
-dep_cuttlefish  = git https://github.com/emqtt/cuttlefish develop
+CT_NODE_NAME = emqxct@127.0.0.1
 
-DEPS = emqttc
+all: compile
 
-TEST_DEPS = emqttc
-dep_emqttc = git https://github.com/emqtt/emqttc.git master
+compile: unlock
+	$(REBAR) compile
 
-ERLC_OPTS += +debug_info
-ERLC_OPTS += +'{parse_transform, lager_transform}'
+clean: distclean
 
-TEST_ERLC_OPTS += +debug_info
-TEST_ERLC_OPTS += +'{parse_transform, lager_transform}'
+ct: compile
+	$(REBAR) as test ct -v --readable=false --name $(CT_NODE_NAME)
 
-EUNIT_OPTS = verbose
+eunit: compile
+	$(REBAR) as test eunit
 
-COVER = true
+unlock:
+	$(REBAR) unlock
 
-# PLT_APPS = sasl asn1 ssl syntax_tools runtime_tools crypto xmerl os_mon inets public_key ssl lager compiler mnesia
+xref:
+	$(REBAR) xref
 
-DIALYZER_DIRS := ebin/
-DIALYZER_OPTS := --verbose --statistics -Werror_handling \
-                 -Wrace_conditions #-Wunmatched_returns
+distclean:
+	@rm -rf _build
+	@rm -f data/app.*.config data/vm.*.args rebar.lock
 
-include $(if $(ERLANG_MK_FILENAME),$(ERLANG_MK_FILENAME),erlang.mk)
+CUTTLEFISH_SCRIPT = _build/default/lib/cuttlefish/cuttlefish
 
-app.config::
-	./deps/cuttlefish/cuttlefish -l info -e etc/ -c etc/emqx_bridge_mqtt.conf -i priv/emqx_bridge_mqtt.schema -d data
+$(CUTTLEFISH_SCRIPT):
+	@${REBAR} get-deps
+	@if [ ! -f cuttlefish ]; then make -C _build/default/lib/cuttlefish; fi
+
+app.config: $(CUTTLEFISH_SCRIPT)
+	$(verbose) $(CUTTLEFISH_SCRIPT) -l info -e etc/ -c etc/emqx_bridge_mqtt.conf -i priv/emqx_bridge_mqtt.schema -d data

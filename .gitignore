@@ -13,3 +13,7 @@ _build
 data
 ebin
 emqx_bridge_mqtt.d
+*.rendered
+.rebar3/
+*.coverdata
+rebar.lock
