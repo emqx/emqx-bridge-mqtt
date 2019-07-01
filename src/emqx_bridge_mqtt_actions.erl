@@ -226,16 +226,7 @@
                                                    "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
                                                    "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
                                           }
-                         },
-          retry_interval => #{order => 4,
-                              type => string,
-                              required => false,
-                              default => <<"20s">>,
-                              title => #{en => <<"Retry interval">>,
-                                         zh => <<"重传间隔"/utf8>>},
-                              description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
-                                               zh => <<"QoS1 消息重传间隔"/utf8>>}
-                             }
+                         }
          }).
 
 -define(ACTION_PARAM_RESOURCE,
@@ -267,7 +258,7 @@
 
 -rule_action(#{name => data_to_mqtt_broker,
                for => '$any',
-               types => [?RESOURCE_TYPE_MQTT],
+               types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
                create => on_action_create_data_to_mqtt_broker,
                params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
                title => #{en => <<"Data bridge to MQTT Broker">>,
@@ -301,6 +292,7 @@ start_resource(ResId, PoolName, Options) ->
             start_resource(ResId, PoolName, Options);
         {error, Reason} ->
             ?LOG(error, "Initiate Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
+            on_resource_destroy(ResId, #{<<"pool">> => PoolName}),
             error({{?RESOURCE_TYPE_MQTT, ResId}, create_failed})
     end.
 
@@ -322,12 +314,12 @@ on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
 on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Destroying Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
         case ecpool:stop_sup_pool(PoolName) of
-        ok ->
-            ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
-        {error, Reason} ->
-            ?LOG(error, "Destroy Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
-            error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
-    end.
+            ok ->
+                ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
+            {error, Reason} ->
+                ?LOG(error, "Destroy Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
+                error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
+        end.
 
 on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
@@ -383,64 +375,43 @@ connect(Options) ->
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
 
-options(#{<<"bridge_name">> := Name,
-          <<"address">> := Address,
-          <<"proto_ver">> := ProtoVer,
-          <<"client_id">> := ClientId,
-          <<"username">> := Username,
-          <<"password">> := Password,
-          <<"mountpoint">> := MountPoint,
-          <<"ssl">> := SslFlag,
-          <<"cacertfile">> := Cacertfile,
-          <<"certfile">> := Certfile,
-          <<"keyfile">> := Keyfile,
-          <<"ciphers">> := Ciphers,
-          <<"keepalive">> := KeepAlive,
-          <<"reconnect_interval">> := ReconnectInterval,
-          <<"retry_interval">> := RetryInterval}) ->
-    BridgeName = binary_to_atom(Name, utf8),
-    case is_node_addr(Address) of
-        true ->
-            [{bridge_name, BridgeName},
-             {address, binary_to_atom(Address, utf8)},
-             {connect_module, emqx_bridge_rpc},
-             {max_inflight_batches, 32},
-             {mountpoint, str(MountPoint)},
-             {queue, #{batch_bytes_limit => 1048576000,
-                       batch_count_limit => 32,
-                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
-                       replayq_seg_bytes => 10485760}},
-             {start_type, auto},
-             {if_record_metrics, false},
-             {pool_size, 1}];
-        false ->
-            [{bridge_name, BridgeName},
-             {address, binary_to_list(Address)},
-             {clean_start, true},
-             {client_id, ClientId},
-             {connect_module, emqx_bridge_mqtt},
-             {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
-             {max_inflight_batches, 32},
-             {mountpoint, str(MountPoint)},
-             {username, str(Username)},
-             {password, str(Password)},
-             {proto_ver, mqtt_ver(ProtoVer)},
-             {queue, #{batch_bytes_limit => 1048576000,
-                       batch_count_limit => 32,
-                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
-                       replayq_seg_bytes => 10485760}},
-             {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
-             {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
-             {ssl, cuttlefish_flag:parse(str(SslFlag))},
-             {ssl_opts, [{versions, tls_versions()},
-                         {ciphers, ciphers(Ciphers)},
-                         {keyfile, str(Keyfile)},
-                         {certfile, str(Certfile)},
-                         {cacertfile, str(Cacertfile)}
-                        ]},
-             {start_type, auto},
-             {if_record_metrics, false},
-             {pool_size, 1}]
+options(Options) ->
+    GetD = fun(Key, Default) -> maps:get(Key, Options, Default) end,
+    Get = fun(Key) -> GetD(Key, undefined) end,
+    BridgeName = binary_to_atom(Get(<<"bridge_name">>), utf8),
+    Address = Get(<<"address">>),
+    [{bridge_name, BridgeName},
+     {max_inflight_batches, 32},
+     {mountpoint, str(Get(<<"mountpoint">>))},
+     {queue, #{batch_bytes_limit => 1048576000,
+               batch_count_limit => 32,
+               replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
+               replayq_seg_bytes => 10485760}},
+     {start_type, auto},
+     {if_record_metrics, false},
+     {pool_size, 1}
+    ] ++ case is_node_addr(Address) of
+             true ->
+                 [{address, binary_to_atom(Get(<<"address">>), utf8)},
+                  {connect_module, emqx_bridge_rpc}];
+             false ->
+                 [{address, binary_to_list(Address)},
+                  {clean_start, true},
+                  {client_id, Get(<<"client_id">>)},
+                  {connect_module, emqx_bridge_mqtt},
+                  {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
+                  {username, str(Get(<<"username">>))},
+                  {password, str(Get(<<"password">>))},
+                  {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
+                  {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
+                  {retry_interval, cuttlefish_duration:parse(str(Get(<<"retry_interval">>)), ms)},
+                  {ssl, cuttlefish_flag:parse(str(Get(<<"ssl">>)))},
+                  {ssl_opts, [{versions, tls_versions()},
+                              {ciphers, ciphers(Get(<<"ciphers">>))},
+                              {keyfile, str(Get(<<"keyfile">>))},
+                              {certfile, str(Get(<<"certfile">>))},
+                              {cacertfile, str(Get(<<"cacertfile">>))}
+                             ]}]
     end.
 
 mqtt_ver(ProtoVer) ->
