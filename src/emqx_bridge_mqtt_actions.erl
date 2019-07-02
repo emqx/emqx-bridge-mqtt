@@ -44,10 +44,18 @@
                        title => #{en => <<"Broker Address">>,
                                   zh => <<"桥接地址"/utf8>>},
                        description => #{en => <<"The MQTT Remote IP Address">>,
-                                        zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>
-                                       }
+                                        zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>}
                       },
-          proto_ver => #{order => 2,
+          bridge_mode => #{order => 2,
+                           type => boolean,
+                           required => false,
+                           default => true,
+                           title => #{en => <<"Bridge Mode">>,
+                                      zh => <<"桥接模式"/utf8>>},
+                           description => #{en => <<"Bridge_mode for MQTT bridge connection">>,
+                                            zh => <<"用于 MQTT 连接的桥接模式"/utf8>>}
+                          },
+          proto_ver => #{order => 3,
                          type => string,
                          required => false,
                          default => <<"mqttv4">>,
@@ -57,10 +65,9 @@
                          description => #{en => <<"Protocol version for MQTT bridge"
                                                   "(Only for bridge with MQTT protocol)">>,
                                           zh => <<"用于 MQTT 桥接的 MQTT 协议版本"
-                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>
-                                         }
+                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
                         },
-          disk_cache => #{order => 3,
+          disk_cache => #{order => 4,
                           type => string,
                           required => false,
                           default => <<"off">>,
@@ -71,10 +78,9 @@
                                                    "can be cached on local disk when bridge is"
                                                    "disconnected">>,
                                            zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
-                                                   "盘队列上"/utf8>>
-                                          }
+                                                   "盘队列上"/utf8>>}
                          },
-          pool_size => #{order => 4,
+          pool_size => #{order => 5,
                          type => number,
                          required => true,
                          default => 4,
@@ -82,7 +88,7 @@
                          description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
                                           zh => <<"客户端连接池大小"/utf8>>}
                         },
-          username => #{order => 5,
+          username => #{order => 6,
                         type => string,
                         required => false,
                         default => <<"user">>,
@@ -92,7 +98,7 @@
                                          zh => <<"用于桥接 MQTT Broker 的 Clean Start 值"
                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
                        },
-          password => #{order => 6,
+          password => #{order => 7,
                         type => string,
                         required => false,
                         default => <<"passwd">>,
@@ -102,21 +108,21 @@
                                          zh => <<"用于桥接 MQTT Broker 的密码"
                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
                        },
-          mountpoint => #{order => 7,
+          mountpoint => #{order => 8,
                           type => string,
                           required => true,
                           default => <<"bridge/aws/${node}/">>,
                           title => #{en => <<"Bridge MountPoint">>,
                                      zh => <<"桥接挂载点"/utf8>>},
-                          description => #{en => <<"MountPoint for bridge topic<br/>"
+                          description => #{en => <<"MountPoint for bridge topic:<br/>"
                                                    "Example: The topic of messages sent to `topic1` on local node"
                                                    "will be transformed to `bridge/aws/${node}/topic1`">>,
-                                           zh => <<"桥接主题的挂载点<br/>"
+                                           zh => <<"桥接主题的挂载点:<br/>"
                                                    "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
                                                    "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
                                           }
                          },
-          keepalive => #{order => 8,
+          keepalive => #{order => 9,
                          type => string,
                          required => true,
                          default => <<"60s">> ,
@@ -125,18 +131,18 @@
                          description => #{en => <<"Ping interval">>,
                                           zh => <<"桥接的心跳间隔"/utf8>>}
                         },
-          reconnect_interval => #{order => 9,
+          reconnect_interval => #{order => 10,
                                   type => string,
                                   required => false,
                                   default => <<"30s">>,
                                   title => #{en => <<"Reconnect Interval">>,
                                              zh => <<"重连间隔"/utf8>>},
-                                  description => #{en => <<"Start type of the bridge<br/>"
+                                  description => #{en => <<"Start type of the bridge:<br/>"
                                                            "Enum: auto, manual">>,
-                                                   zh => <<"桥接的启动类型<br/>"
+                                                   zh => <<"桥接的启动类型:<br/>"
                                                            "启动类型: auto, manual"/utf8>>}
                                  },
-          retry_interval => #{order => 10,
+          retry_interval => #{order => 11,
                               type => string,
                               required => false,
                               default => <<"20s">>,
@@ -145,7 +151,7 @@
                               description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
                                                zh => <<"QoS1 消息重传间隔"/utf8>>}
                              },
-          ssl => #{order => 11,
+          ssl => #{order => 12,
                    type => string,
                    required => true,
                    default => <<"off">>,
@@ -157,7 +163,7 @@
                                     zh => <<"用于启用 bridge ssl 连接的开关"/utf8>>
                                    }
                   },
-          cacertfile => #{order => 12,
+          cacertfile => #{order => 13,
                           type => string,
                           required => false,
                           default => <<"etc/certs/cacert.pem">>,
@@ -167,7 +173,7 @@
                                            zh => <<"CA 证书所在路径"/utf8>>
                                           }
                          },
-          certfile => #{order => 13,
+          certfile => #{order => 14,
                         type => string,
                         required => false,
                         default => <<"etc/certs/client-cert.pem">>,
@@ -177,7 +183,7 @@
                                          zh => <<"客户端证书文件所在路径"/utf8>>
                                         }
                        },
-          keyfile => #{order => 14,
+          keyfile => #{order => 15,
                        type => string,
                        required => false,
                        default => <<"etc/certs/client-key.pem">>,
@@ -187,7 +193,7 @@
                                         zh => <<"客户端密钥文件所在路径"/utf8>>
                                        }
                       },
-          ciphers => #{order => 15,
+          ciphers => #{order => 16,
                        type => string,
                        required => false,
                        default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
@@ -421,6 +427,7 @@ options(Options) ->
                   {connect_module, emqx_bridge_rpc}];
              false ->
                  [{address, binary_to_list(Address)},
+                  {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
                   {client_id, undefined},
                   {connect_module, emqx_bridge_mqtt},

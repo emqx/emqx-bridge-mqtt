@@ -10,6 +10,10 @@
   {datatype, {enum, [mqttv3, mqttv4, mqttv5]}}
 ]}.
 
+{mapping, "bridge.mqtt.$name.bridge_mode", "emqx_bridge_mqtt.bridges", [
+  {datatype, {enum, [true, false]}}
+]}.
+
 {mapping, "bridge.mqtt.$name.client_id", "emqx_bridge_mqtt.bridges", [
   {datatype, string}
 ]}.

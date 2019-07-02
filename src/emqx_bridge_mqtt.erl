@@ -56,8 +56,7 @@ start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
     ClientConfig = Config#{msg_handler => Handlers,
                            owner => AckCollector,
                            host => Host,
-                           port => Port,
-                           bridge_mode => true
+                           port => Port
                           },
     case emqx_client:start_link(ClientConfig) of
         {ok, Pid} ->
