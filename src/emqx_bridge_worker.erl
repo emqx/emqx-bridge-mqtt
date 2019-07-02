@@ -271,16 +271,16 @@ init(Config) ->
     QueueConfig =
         case GetQ(replayq_dir, undefined) of
             pool -> #{dir => filename:join([emqx_config:get_env(data_dir),
+                                            "pool",
                                             binary_to_list(to_base62(gen()))
                                            ]),
                       seg_bytes => GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES)};
             Dir when Dir =:= undefined;
                      Dir =:= "" ->
                 #{mem_only => true};
-            true -> #{mem_only => true};
-            false -> #{dir => Dir,
-                       seg_bytes => SegBytes
-                      }
+            Dir -> #{dir => Dir,
+                     seg_bytes => SegBytes
+                    }
         end,
     Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),

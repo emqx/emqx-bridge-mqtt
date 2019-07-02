@@ -60,6 +60,20 @@
                                                   "（仅适用于 MQTT 协议桥接）"/utf8>>
                                          }
                         },
+          disk_cache => #{order => 3,
+                          type => string,
+                          required => false,
+                          default => <<"off">>,
+                          enum => [<<"on">>, <<"off">>],
+                          title => #{en => <<"Disk Cache">>,
+                                     zh => <<"磁盘缓存"/utf8>>},
+                          description => #{en => <<"The flag which determines whether messages" 
+                                                   "can be cached on local disk when bridge is"
+                                                   "disconnected">>,
+                                           zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
+                                                   "盘队列上"/utf8>>
+                                          }
+                         },
           pool_size => #{order => 4,
                          type => number,
                          required => true,
@@ -135,6 +149,7 @@
                    type => string,
                    required => true,
                    default => <<"off">>,
+                   enum => [<<"on">>, <<"off">>],
                    title => #{en => <<"Bridge ssl">>,
                               zh => <<"Bridge ssl"/utf8>>
                              },
@@ -215,7 +230,21 @@
                          title => #{en => <<"Pool Size">>, zh => <<"连接池大小"/utf8>>},
                          description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
                                           zh => <<"客户端连接池大小"/utf8>>} 
-                        }
+                        },
+          disk_cache => #{order => 4,
+                          type => string,
+                          required => false,
+                          default => <<"off">>,
+                          enum => [<<"on">>, <<"off">>],
+                          title => #{en => <<"Disk Cache">>,
+                                     zh => <<"磁盘缓存"/utf8>>},
+                          description => #{en => <<"The flag which determines whether messages" 
+                                                   "can be cached on local disk when bridge is"
+                                                   "disconnected">>,
+                                           zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
+                                                   "盘队列上"/utf8>>
+                                          }
+                         }
          }).
 
 -define(ACTION_PARAM_RESOURCE,
