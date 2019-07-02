@@ -407,7 +407,10 @@ options(Options) ->
      {mountpoint, str(Get(<<"mountpoint">>))},
      {queue, #{batch_bytes_limit => 1048576000,
                batch_count_limit => 32,
-               replayq_dir => pool,
+               replayq_dir => case Get(<<"disk_cache">>) of
+                                  <<"on">> -> pool;
+                                  <<"off">> -> undefined
+                              end,
                replayq_seg_bytes => 10485760}},
      {start_type, auto},
      {if_record_metrics, false},
