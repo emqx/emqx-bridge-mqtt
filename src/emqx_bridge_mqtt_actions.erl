@@ -37,15 +37,7 @@
 -define(RESOURCE_TYPE_RPC, 'bridge_rpc').
 
 -define(RESOURCE_CONFIG_SPEC_MQTT,
-        #{bridge_name => #{order => 1,
-                           type => string,
-                           required => true,
-                           default => <<"aws">>,
-                           title => #{en => <<"Bridge Name">>,
-                                      zh => <<"桥接名称"/utf8>>
-                                     }
-                          },
-          address => #{order => 2,
+        #{address => #{order => 1,
                        type => string,
                        required => true,
                        default => <<"127.0.0.1:1883">>,
@@ -55,7 +47,7 @@
                                         zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>
                                        }
                       },
-          proto_ver => #{order => 3,
+          proto_ver => #{order => 2,
                          type => string,
                          required => false,
                          default => <<"mqttv4">>,
@@ -68,16 +60,13 @@
                                                   "（仅适用于 MQTT 协议桥接）"/utf8>>
                                          }
                         },
-          client_id => #{order => 4,
-                         type => string,
-                         required => false,
-                         default => <<"bridge_aws">>,
-                         title => #{en => <<"Client ID">>,
-                                    zh => <<"客户端 ID"/utf8>>},
-                         description => #{en => <<"Client Id for connecting to MQTT Broker"
-                                                  "(Only for bridge with MQTT protocol)">>,
-                                          zh => <<"用于桥接 MQTT Broker 的 Client Id"
-                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
+          pool_size => #{order => 4,
+                         type => number,
+                         required => true,
+                         default => 4,
+                         title => #{en => <<"Pool Size">>, zh => <<"连接池大小"/utf8>>},
+                         description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
+                                          zh => <<"客户端连接池大小"/utf8>>}
                         },
           username => #{order => 5,
                         type => string,
@@ -195,15 +184,7 @@
          }).
 
 -define(RESOURCE_CONFIG_SPEC_RPC,
-        #{bridge_name => #{order => 1,
-                           type => string,
-                           required => true,
-                           default => <<"aws">>,
-                           title => #{en => <<"Bridge Name">>,
-                                      zh => <<"桥接名称"/utf8>>
-                                     }
-                          },
-          address => #{order => 2,
+        #{address => #{order => 1,
                        type => string,
                        required => true,
                        default => <<"emqx2@127.0.0.1">>,
@@ -213,7 +194,7 @@
                                         zh => <<"远程 EMQX 节点名称 "/utf8>>
                                        }
                       },
-          mountpoint => #{order => 3,
+          mountpoint => #{order => 2,
                           type => string,
                           required => true,
                           default => <<"bridge/aws/${node}/">>,
@@ -226,7 +207,15 @@
                                                    "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
                                                    "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
                                           }
-                         }
+                         },
+          pool_size => #{order => 3,
+                         type => number,
+                         required => true,
+                         default => 4,
+                         title => #{en => <<"Pool Size">>, zh => <<"连接池大小"/utf8>>},
+                         description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
+                                          zh => <<"客户端连接池大小"/utf8>>} 
+                        }
          }).
 
 -define(ACTION_PARAM_RESOURCE,
@@ -297,14 +286,21 @@ start_resource(ResId, PoolName, Options) ->
     end.
 
 test_resource_status(PoolName) ->
-    ecpool:with_client(PoolName, fun(Bridge) ->
-                                         try emqx_bridge_worker:status(Bridge) of
-                                             connected -> true;
-                                             _ -> false
-                                         catch _Error:_Reason ->
-                                                 false
-                                         end
-                                 end).
+    IsConnected = fun(Worker) ->
+                          case ecpool_worker:client(Worker) of
+                              {ok, Bridge} ->
+                                  try emqx_bridge_worker:status(Bridge) of
+                                      connected -> true;
+                                      _ -> false
+                                  catch _Error:_Reason ->
+                                          false
+                                  end;
+                              {error, _} ->
+                                  false
+                          end
+                  end,
+    Status = [IsConnected(Worker) || {_WorkerName, Worker} <- ecpool:workers(PoolName)],
+    lists:any(fun(St) -> St =:= true end, Status).
 
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
 on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
@@ -369,8 +365,7 @@ scan_string(TermString) ->
     Term.
 
 connect(Options) ->
-    BridgeName = proplists:get_value(bridge_name, Options),
-    emqx_bridge_worker:start_link(BridgeName, Options).
+    emqx_bridge_worker:start_link(Options).
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
@@ -378,18 +373,16 @@ pool_name(ResId) ->
 options(Options) ->
     GetD = fun(Key, Default) -> maps:get(Key, Options, Default) end,
     Get = fun(Key) -> GetD(Key, undefined) end,
-    BridgeName = binary_to_atom(Get(<<"bridge_name">>), utf8),
     Address = Get(<<"address">>),
-    [{bridge_name, BridgeName},
-     {max_inflight_batches, 32},
+    [{max_inflight_batches, 32},
      {mountpoint, str(Get(<<"mountpoint">>))},
      {queue, #{batch_bytes_limit => 1048576000,
                batch_count_limit => 32,
-               replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
+               replayq_dir => pool,
                replayq_seg_bytes => 10485760}},
      {start_type, auto},
      {if_record_metrics, false},
-     {pool_size, 1}
+     {pool_size, GetD(<<"pool_size">>, 1)}
     ] ++ case is_node_addr(Address) of
              true ->
                  [{address, binary_to_atom(Get(<<"address">>), utf8)},
@@ -397,7 +390,7 @@ options(Options) ->
              false ->
                  [{address, binary_to_list(Address)},
                   {clean_start, true},
-                  {client_id, Get(<<"client_id">>)},
+                  {client_id, undefined},
                   {connect_module, emqx_bridge_mqtt},
                   {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
                   {username, str(Get(<<"username">>))},
@@ -412,7 +405,7 @@ options(Options) ->
                               {certfile, str(Get(<<"certfile">>))},
                               {cacertfile, str(Get(<<"cacertfile">>))}
                              ]}]
-    end.
+         end.
 
 mqtt_ver(ProtoVer) ->
     case ProtoVer of
