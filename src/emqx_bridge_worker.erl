@@ -153,7 +153,7 @@
 %% Find more connection specific configs in the callback modules
 %% of emqx_bridge_connect behaviour.
 start_link(Config) ->
-    start_link(binary_to_list(to_base62(gen())), Config).
+    gen_statem:start_link(?MODULE, Config, []).
 
 start_link(Name, Config) when is_list(Config) ->
     start_link(Name, maps:from_list(Config));
