@@ -80,13 +80,16 @@
                                            zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
                                                    "盘队列上"/utf8>>}
                          },
-          pool_size => #{order => 5,
-                         type => number,
-                         required => true,
-                         default => 4,
-                         title => #{en => <<"Pool Size">>, zh => <<"连接池大小"/utf8>>},
-                         description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
-                                          zh => <<"客户端连接池大小"/utf8>>}
+          client_id => #{order => 5,
+                         type => string,
+                         required => false,
+                         default => <<"bridge_aws">>,
+                         title => #{en => <<"Client ID">>,
+                                    zh => <<"客户端 ID"/utf8>>},
+                         description => #{en => <<"Client Id for connecting to MQTT Broker"
+                                                  "(Only for bridge with MQTT protocol)">>,
+                                          zh => <<"用于桥接 MQTT Broker 的 Client Id"
+                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
                         },
           username => #{order => 6,
                         type => string,
@@ -139,8 +142,7 @@
                                              zh => <<"重连间隔"/utf8>>},
                                   description => #{en => <<"Start type of the bridge:<br/>"
                                                            "Enum: auto, manual">>,
-                                                   zh => <<"桥接的启动类型:<br/>"
-                                                           "启动类型: auto, manual"/utf8>>}
+                                                   zh => <<"桥接的重连间隔"/utf8>>}
                                  },
           retry_interval => #{order => 11,
                               type => string,
@@ -429,7 +431,7 @@ options(Options) ->
                  [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
-                  {client_id, undefined},
+                  {client_id, str(Get(<<"client_id">>))},
                   {connect_module, emqx_bridge_mqtt},
                   {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
                   {username, str(Get(<<"username">>))},
