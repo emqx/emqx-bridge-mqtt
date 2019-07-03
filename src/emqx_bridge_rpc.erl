@@ -61,9 +61,9 @@ stop(Pid, _Remote) when is_pid(Pid) ->
 
 %% @doc Callback for `emqx_bridge_connect' behaviour
 -spec send(node(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
-send(Remote, Batch, IfRecordMetric) ->
+send(Remote, Batch, _IfRecordMetric) ->
     Sender = self(),
-    case ?RPC:call(Remote, ?MODULE, handle_send, [Sender, Batch, IfRecordMetric]) of
+    case ?RPC:call(Remote, ?MODULE, handle_send, [Sender, Batch, false]) of
         {ok, Ref} -> {ok, Ref};
         {badrpc, Reason} -> {error, Reason}
     end.
