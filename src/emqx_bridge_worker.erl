@@ -152,6 +152,8 @@
 %%
 %% Find more connection specific configs in the callback modules
 %% of emqx_bridge_connect behaviour.
+start_link(Config) when is_list(Config) ->
+    start_link(maps:from_list(Config));
 start_link(Config) ->
     gen_statem:start_link(?MODULE, Config, []).
 
