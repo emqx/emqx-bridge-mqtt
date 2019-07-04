@@ -25,7 +25,7 @@
         ]).
 
 %% Internal exports
--export([ handle_send/3
+-export([ handle_send/2
         , handle_ack/2
         , heartbeat/2
         ]).
@@ -62,18 +62,18 @@ stop(Pid, _Remote) when is_pid(Pid) ->
 %% @doc Callback for `emqx_bridge_connect' behaviour
 -spec send(node(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
 send(Remote, Batch, _IfRecordMetric) ->
-    Sender = self(),
-    case ?RPC:call(Remote, ?MODULE, handle_send, [Sender, Batch, false]) of
-        {ok, Ref} -> {ok, Ref};
+    case ?RPC:call(Remote, ?MODULE, handle_send, [Batch, false]) of
+        {ok, Ref} ->
+            emqx_bridge_worker:handle_ack(self(), Ref),
+            {ok, Ref};
         {badrpc, Reason} -> {error, Reason}
     end.
 
 %% @doc Handle send on receiver side.
--spec handle_send(pid(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
-handle_send(SenderPid, Batch, IfRecordMetric) ->
-    SenderNode = node(SenderPid),
+-spec handle_send(batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
+handle_send(Batch, IfRecordMetric) ->
     Ref = make_ref(),
-    AckFun = fun() -> ?RPC:cast(SenderNode, ?MODULE, handle_ack, [SenderPid, Ref]), ok end,
+    AckFun = fun() -> ok end,
     case emqx_bridge_worker:import_batch(Batch, AckFun, IfRecordMetric) of
         ok -> {ok, Ref};
         Error -> Error

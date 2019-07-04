@@ -239,7 +239,17 @@
                          description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
                                           zh => <<"客户端连接池大小"/utf8>>} 
                         },
-          disk_cache => #{order => 4,
+          reconnect_interval => #{order => 4,
+                                  type => string,
+                                  required => false,
+                                  default => <<"30s">>,
+                                  title => #{en => <<"Reconnect Interval">>,
+                                             zh => <<"重连间隔"/utf8>>},
+                                  description => #{en => <<"Start type of the bridge:<br/>"
+                                                           "Enum: auto, manual">>,
+                                                   zh => <<"桥接的重连间隔"/utf8>>}
+                                 },
+          disk_cache => #{order => 5,
                           type => string,
                           required => false,
                           default => <<"off">>,
@@ -421,6 +431,7 @@ options(Options) ->
                               end,
                replayq_seg_bytes => 10485760}},
      {start_type, auto},
+     {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
      {if_record_metrics, false},
      {pool_size, GetD(<<"pool_size">>, 1)}
     ] ++ case is_node_addr(Address) of
@@ -437,7 +448,6 @@ options(Options) ->
                   {username, str(Get(<<"username">>))},
                   {password, str(Get(<<"password">>))},
                   {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
-                  {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
                   {retry_interval, cuttlefish_duration:parse(str(Get(<<"retry_interval">>)), ms)},
                   {ssl, cuttlefish_flag:parse(str(Get(<<"ssl">>)))},
                   {ssl_opts, [{versions, tls_versions()},
