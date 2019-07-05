@@ -383,18 +383,12 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
                                  from = From,
                                  flags = Flags,
                                  topic = Topic,
-                                 payload = format_data(Msg),
+                                 payload = jsx:encode(Msg),
                                  timestamp = TimeStamp},
             ecpool:with_client(PoolName, fun(BridgePid) ->
                                              BridgePid ! {dispatch, rule_engine, BrokerMsg}
                                          end)
     end.
-
-format_data(Msg) ->
-    jsx:encode(maps:merge(Msg, base_data())).
-
-base_data() ->
-    #{node => node(), ts => emqx_time:now_ms()}.
 
 tls_versions() ->
     ['tlsv1.2','tlsv1.1', tlsv1].
