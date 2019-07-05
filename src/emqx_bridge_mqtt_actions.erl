@@ -72,7 +72,7 @@
           disk_cache => #{order => 4,
                           type => string,
                           required => false,
-                          default => <<"off">>,
+                          default => <<"on">>,
                           enum => [<<"on">>, <<"off">>],
                           title => #{en => <<"Disk Cache">>,
                                      zh => <<"磁盘缓存"/utf8>>},
@@ -236,7 +236,7 @@
           pool_size => #{order => 3,
                          type => number,
                          required => true,
-                         default => 4,
+                         default => 8,
                          title => #{en => <<"Pool Size">>, zh => <<"连接池大小"/utf8>>},
                          description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
                                           zh => <<"客户端连接池大小"/utf8>>} 
@@ -254,7 +254,7 @@
           disk_cache => #{order => 5,
                           type => string,
                           required => false,
-                          default => <<"off">>,
+                          default => <<"on">>,
                           enum => [<<"on">>, <<"off">>],
                           title => #{en => <<"Disk Cache">>,
                                      zh => <<"磁盘缓存"/utf8>>},
@@ -312,7 +312,7 @@ on_resource_create(ResId, Params) ->
     {ok, _} = application:ensure_all_started(ecpool),
     Options = options(Params),
     PoolName = pool_name(ResId),
-    start_resource(ResId, PoolName, maps:from_list(Options)),
+    start_resource(ResId, PoolName, Options),
     case test_resource_status(PoolName) of
         true -> ok;
         false ->
@@ -413,6 +413,8 @@ scan_string(TermString) ->
     {ok, Term} = erl_parse:parse_term(Tokens),
     Term.
 
+connect(Options) when is_list(Options) ->
+    maps:from_list(Options);
 connect(Options = #{queue := Queue}) ->
     NewOptions = case maps:get(replayq_dir, Queue, false) of
                      true ->
