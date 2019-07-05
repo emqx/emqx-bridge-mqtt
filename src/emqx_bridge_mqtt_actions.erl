@@ -82,26 +82,26 @@
             title => #{en => <<"Client ID">>,
                        zh => <<"客户端 ID"/utf8>>},
             description => #{en => <<"Client Id for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 MQTT Broker 的 Client Id"/utf8>>}
+                             zh => <<"用于桥接 Remote Broker 的 Client Id"/utf8>>}
         },
         username => #{
             order => 5,
             type => string,
             required => false,
             default => <<"user">>,
-            title => #{en => <<"MQTT Username">>, zh => <<"MQTT 用户名"/utf8>>},
+            title => #{en => <<"Username">>, zh => <<"MQTT 用户名"/utf8>>},
             description => #{en => <<"Username for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 MQTT Broker 的 Clean Start 值"/utf8>>}
+                             zh => <<"用于桥接 Remote Broker 的 Username"/utf8>>}
         },
         password => #{
             order => 6,
             type => string,
             required => false,
             default => <<"passwd">>,
-            title => #{en => <<"MQTT Password">>,
-                       zh => <<"MQTT 密码"/utf8>>},
+            title => #{en => <<"Password">>,
+                       zh => <<"密码"/utf8>>},
             description => #{en => <<"Password for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 MQTT Broker 的密码"/utf8>>}
+                             zh => <<"用于桥接 Remote Broker 的密码"/utf8>>}
         },
         mountpoint => #{
             order => 7,
@@ -124,9 +124,9 @@
             type => string,
             required => true,
             default => <<"60s">> ,
-            title => #{en => <<"Ping interval">>,
+            title => #{en => <<"Keepalive">>,
                        zh => <<"桥接的心跳间隔"/utf8>>},
-            description => #{en => <<"Ping interval">>,
+            description => #{en => <<"Keepalive">>,
                              zh => <<"桥接的心跳间隔"/utf8>>}
         },
         reconnect_interval => #{
@@ -136,8 +136,7 @@
             default => <<"30s">>,
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
-            description => #{en => <<"Start type of the bridge:<br/>"
-                                     "Enum: auto, manual">>,
+            description => #{en => <<"Reconnect interval of bridge:<br/>">>,
                              zh => <<"桥接的重连间隔"/utf8>>}
         },
         retry_interval => #{
@@ -148,7 +147,7 @@
             title => #{en => <<"Retry interval">>,
                        zh => <<"重传间隔"/utf8>>},
             description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
-                             zh => <<"QoS1 消息重传间隔"/utf8>>}
+                             zh => <<"消息重传间隔"/utf8>>}
         },
         bridge_mode => #{
             order => 11,
@@ -157,8 +156,8 @@
             default => true,
             title => #{en => <<"Bridge Mode">>,
                        zh => <<"桥接模式"/utf8>>},
-            description => #{en => <<"Bridge_mode for MQTT bridge connection">>,
-                             zh => <<"该字段用于确定 mqtt 连接是否为桥接模式"/utf8>>}
+            description => #{en => <<"Bridge mode for MQTT bridge connection">>,
+                             zh => <<"MQTT 连接是否为桥接模式"/utf8>>}
         },
         ssl => #{
             order => 12,
@@ -166,10 +165,10 @@
             required => true,
             default => <<"off">>,
             enum => [<<"on">>, <<"off">>],
-            title => #{en => <<"Bridge ssl">>,
-                       zh => <<"Bridge ssl"/utf8>>},
-            description => #{en => <<"The switch which used to enable ssl connection of the bridge">>,
-                             zh => <<"用于启用 bridge ssl 连接的开关"/utf8>>}
+            title => #{en => <<"Bridge SSL">>,
+                       zh => <<"Bridge SSL"/utf8>>},
+            description => #{en => <<"Switch which used to enable ssl connection of the bridge">>,
+                             zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
         },
         cacertfile => #{
             order => 13,
@@ -179,7 +178,7 @@
             title => #{en => <<"CA certificates">>,
                        zh => <<"CA 证书"/utf8>>},
             description => #{en => <<"The file path of the CA certificates">>,
-                             zh => <<"CA 证书所在路径"/utf8>>}
+                             zh => <<"CA 证书路径"/utf8>>}
         },
         certfile => #{
             order => 14,
@@ -189,7 +188,7 @@
             title => #{en => <<"SSL Certfile">>,
                        zh => <<"SSL 证书"/utf8>>},
             description => #{en => <<"The file path of the client certfile">>,
-                             zh => <<"客户端证书文件所在路径"/utf8>>}
+                             zh => <<"客户端证书文件路径"/utf8>>}
         },
         keyfile => #{
             order => 15,
@@ -207,9 +206,9 @@
             required => false,
             default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
             title => #{en => <<"SSL Ciphers">>,
-                       zh => <<"SSL 密码算法"/utf8>>},
-            description => #{en => <<"SSL Ciphers used by the bridge">>,
-                             zh => <<"用于桥接的 SSL 密码算法"/utf8>>}
+                       zh => <<"SSL 加密算法"/utf8>>},
+            description => #{en => <<"SSL Ciphers">>,
+                             zh => <<"SSL 加密算法"/utf8>>}
         }
     }).
 
@@ -219,10 +218,10 @@
             type => string,
             required => true,
             default => <<"emqx2@127.0.0.1">>,
-            title => #{en => <<"EMQX Node Name">>,
-                       zh => <<"EMQX 节点名称"/utf8>>},
-            description => #{en => <<"EMQX remote NodeName">>,
-                             zh => <<"远程 EMQX 节点名称 "/utf8>>}
+            title => #{en => <<"EMQ X Node Name">>,
+                       zh => <<"EMQ X 节点名称"/utf8>>},
+            description => #{en => <<"EMQ X Remote Node Name">>,
+                             zh => <<"远程 EMQ X 节点名称 "/utf8>>}
         },
         mountpoint => #{
             order => 2,
@@ -245,8 +244,8 @@
             default => 8,
             title => #{en => <<"Pool Size">>,
                        zh => <<"连接池大小"/utf8>>},
-            description => #{en => <<"Size of MQTT/RPC Connection Pool">>,
-                             zh => <<"客户端连接池大小"/utf8>>}
+            description => #{en => <<"MQTT/RPC Connection Pool Size">>,
+                             zh => <<"连接池大小"/utf8>>}
         },
         reconnect_interval => #{
             order => 4,
@@ -255,8 +254,7 @@
             default => <<"30s">>,
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
-            description => #{en => <<"Start type of the bridge:<br/>"
-                                     "Enum: auto, manual">>,
+            description => #{en => <<"Reconnect Interval of bridge">>,
                              zh => <<"桥接的重连间隔"/utf8>>}
         },
         disk_cache => #{
