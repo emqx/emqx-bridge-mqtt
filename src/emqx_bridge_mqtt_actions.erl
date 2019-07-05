@@ -414,7 +414,7 @@ scan_string(TermString) ->
     Term.
 
 connect(Options) when is_list(Options) ->
-    maps:from_list(Options);
+    connect(maps:from_list(Options));
 connect(Options = #{queue := Queue}) ->
     NewOptions = case maps:get(replayq_dir, Queue, false) of
                      true ->
