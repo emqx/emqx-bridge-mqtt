@@ -272,13 +272,9 @@ init(Config) ->
     SegBytes = GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES),
     QueueConfig =
         case GetQ(replayq_dir, undefined) of
-            pool -> #{dir => filename:join([emqx_config:get_env(data_dir),
-                                            "pool",
-                                            binary_to_list(to_base62(gen()))
-                                           ]),
-                      seg_bytes => GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES)};
             Dir when Dir =:= undefined;
-                     Dir =:= "" ->
+                     Dir =:= "";
+                     Dir =:= false ->
                 #{mem_only => true};
             Dir -> #{dir => Dir,
                      seg_bytes => SegBytes

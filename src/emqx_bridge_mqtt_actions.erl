@@ -21,6 +21,8 @@
 
 -import(emqx_rule_utils, [str/1]).
 
+-import(emqx_guid, [gen/0, to_base62/1]).
+
 -export([ on_resource_create/2
         , on_get_resource_status/2
         , on_resource_destroy/2
@@ -293,7 +295,7 @@
                 }).
 
 -rule_action(#{name => data_to_mqtt_broker,
-               for => '$any',
+               for => 'message.publish',
                types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
                create => on_action_create_data_to_mqtt_broker,
                params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
@@ -310,7 +312,7 @@ on_resource_create(ResId, Params) ->
     {ok, _} = application:ensure_all_started(ecpool),
     Options = options(Params),
     PoolName = pool_name(ResId),
-    start_resource(ResId, PoolName, Options),
+    start_resource(ResId, PoolName, maps:from_list(Options)),
     case test_resource_status(PoolName) of
         true -> ok;
         false ->
@@ -411,8 +413,18 @@ scan_string(TermString) ->
     {ok, Term} = erl_parse:parse_term(Tokens),
     Term.
 
-connect(Options) ->
-    emqx_bridge_worker:start_link(Options).
+connect(Options = #{queue := Queue}) ->
+    NewOptions = case maps:get(replayq_dir, Queue, false) of
+                     true ->
+                         NewQueue =
+                             Queue#{replayq_dir =>
+                                        filename:join([emqx_config:get_env(data_dir), "pool",
+                                                       binary_to_list(to_base62(gen()))])},
+                         Options#{queue => NewQueue};
+                     false ->
+                         Options
+                 end,
+    emqx_bridge_worker:start_link(NewOptions).
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
@@ -425,10 +437,7 @@ options(Options) ->
      {mountpoint, str(Get(<<"mountpoint">>))},
      {queue, #{batch_bytes_limit => 1048576000,
                batch_count_limit => 32,
-               replayq_dir => case Get(<<"disk_cache">>) of
-                                  <<"on">> -> pool;
-                                  <<"off">> -> undefined
-                              end,
+               replayq_dir => cuttlefish_flag:parse(str(Get(<<"disk_cache">>))),
                replayq_seg_bytes => 10485760}},
      {start_type, auto},
      {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
