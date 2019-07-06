@@ -21,8 +21,6 @@
 
 -import(emqx_rule_utils, [str/1]).
 
--import(emqx_guid, [gen/0, to_base62/1]).
-
 -export([ on_resource_create/2
         , on_get_resource_status/2
         , on_resource_destroy/2

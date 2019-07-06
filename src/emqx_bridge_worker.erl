@@ -102,8 +102,6 @@
         , ensure_subscription_absent/2
         ]).
 
--import(emqx_guid, [gen/0, to_base62/1]).
-
 -export_type([ config/0
              , batch/0
              , ack_ref/0
