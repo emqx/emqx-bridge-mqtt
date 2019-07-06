@@ -314,8 +314,8 @@
 on_resource_create(ResId, Params) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
     {ok, _} = application:ensure_all_started(ecpool),
-    Options = options(Params),
     PoolName = pool_name(ResId),
+    Options = options(Params, PoolName),
     start_resource(ResId, PoolName, Options),
     case test_resource_status(PoolName) of
         true -> ok;
@@ -413,38 +413,35 @@ scan_string(TermString) ->
 
 connect(Options) when is_list(Options) ->
     connect(maps:from_list(Options));
-connect(Options = #{queue := Queue}) ->
-    {_State, Pool, Id, _Client, _Mod, _OnConnect, _Opts} = sys:get_state(self()),
-    NewOptions = case maps:get(replayq_dir, Queue, false) of
-                     true ->
-                         NewQueue =
-                             Queue#{replayq_dir =>
-                                        filename:join([emqx_config:get_env(data_dir),
-                                                       atom_to_list(Pool),
-                                                       integer_to_list(Id)])},
-                         Options#{queue => NewQueue};
-                     false ->
-                         Options
-                 end,
-    emqx_bridge_worker:start_link(NewOptions).
+connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name := Pool}) ->
+    Options0 = case DiskCache of
+                   true ->
+                       QueueOption = #{replayq_dir =>
+                                           filename:join([emqx_config:get_env(data_dir),
+                                                          atom_to_list(Pool),
+                                                          integer_to_list(Id)])},
+                       Options#{queue => QueueOption};
+                   false ->
+                       Options
+               end,
+    Options1 = maps:without([ecpool_worker_id, pool_name], Options0),
+    emqx_bridge_worker:start_link(Options1).
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
 
-options(Options) ->
+options(Options, PoolName) ->
     GetD = fun(Key, Default) -> maps:get(Key, Options, Default) end,
     Get = fun(Key) -> GetD(Key, undefined) end,
     Address = Get(<<"address">>),
     [{max_inflight_batches, 32},
      {mountpoint, str(Get(<<"mountpoint">>))},
-     {queue, #{batch_bytes_limit => 1048576000,
-               batch_count_limit => 32,
-               replayq_dir => cuttlefish_flag:parse(str(Get(<<"disk_cache">>))),
-               replayq_seg_bytes => 10485760}},
+     {disk_cache, cuttlefish_flag:parse(str(Get(<<"disk_cache">>)))},
      {start_type, auto},
      {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
      {if_record_metrics, false},
-     {pool_size, GetD(<<"pool_size">>, 1)}
+     {pool_size, GetD(<<"pool_size">>, 1)},
+     {pool_name, PoolName}
     ] ++ case is_node_addr(Address) of
              true ->
                  [{address, binary_to_atom(Get(<<"address">>), utf8)},

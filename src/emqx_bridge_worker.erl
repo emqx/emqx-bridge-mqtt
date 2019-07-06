@@ -271,12 +271,10 @@ init(Config) ->
     QueueConfig =
         case GetQ(replayq_dir, undefined) of
             Dir when Dir =:= undefined;
-                     Dir =:= "";
-                     Dir =:= false ->
+                     Dir =:= "" ->
                 #{mem_only => true};
             Dir -> #{dir => Dir,
-                     seg_bytes => SegBytes
-                    }
+                     seg_bytes => SegBytes}
         end,
     Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),
@@ -643,7 +641,12 @@ format_mountpoint(undefined) ->
 format_mountpoint(Prefix) ->
     binary:replace(iolist_to_binary(Prefix), <<"${node}">>, atom_to_binary(node(), utf8)).
 
-name() -> {_, Name} = process_info(self(), registered_name), Name.
+name() -> case process_info(self(), registered_name) of
+              {_, Name} ->
+                  Name;
+              _ ->
+                  undefined
+          end.
 
 name(Id) -> list_to_atom(lists:concat([?MODULE, "_", Id])).
 
