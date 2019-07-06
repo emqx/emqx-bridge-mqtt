@@ -61,7 +61,8 @@
 -behaviour(gen_statem).
 
 %% APIs
--export([ start_link/2
+-export([ start_link/1
+        , start_link/2
         , import_batch/3
         , register_metrics/0
         , handle_ack/2
@@ -86,6 +87,8 @@
         , ensure_started/2
         , ensure_stopped/1
         , ensure_stopped/2
+        , ensure_connected/1
+        , ensure_disconnected/1
         , status/1
         ]).
 
@@ -147,20 +150,33 @@
 %%
 %% Find more connection specific configs in the callback modules
 %% of emqx_bridge_connect behaviour.
+start_link(Config) when is_list(Config) ->
+    start_link(maps:from_list(Config));
+start_link(Config) ->
+    gen_statem:start_link(?MODULE, Config, []).
+
 start_link(Name, Config) when is_list(Config) ->
     start_link(Name, maps:from_list(Config));
 start_link(Name, Config) ->
     gen_statem:start_link({local, name(Name)}, ?MODULE, Config, []).
 
-%% @doc Manually start bridge worker. State idempotency ensured.
 ensure_started(Name) ->
     gen_statem:call(name(Name), ensure_started).
 
+%% @doc Manually start bridge worker. State idempotency ensured.
 ensure_started(Name, Config) ->
     case start_link(Name, Config) of
         {ok, Pid} -> {ok, Pid};
         {error, {already_started, Pid}} -> {ok, Pid}
     end.
+
+%% @doc Make bridge worker is connected.
+ensure_connected(Name) ->
+    gen_statem:call(name(Name), ensure_connected).
+
+%% @doc Make bridge worker is disconnected.
+ensure_disconnected(Name) ->
+    gen_statem:call(name(Name), ensure_disconnected).
 
 %% @doc Manually stop bridge worker. State idempotency ensured.
 ensure_stopped(Id) ->
@@ -251,12 +267,14 @@ init(Config) ->
     QCfg = maps:get(queue, Config, #{}),
     GetQ = fun(K, D) -> maps:get(K, QCfg, D) end,
     Dir = GetQ(replayq_dir, undefined),
+    SegBytes = GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES),
     QueueConfig =
-        case Dir =:= undefined orelse Dir =:= "" of
-            true -> #{mem_only => true};
-            false -> #{dir => Dir,
-                       seg_bytes => GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES)
-                      }
+        case GetQ(replayq_dir, undefined) of
+            Dir when Dir =:= undefined;
+                     Dir =:= "" ->
+                #{mem_only => true};
+            Dir -> #{dir => Dir,
+                     seg_bytes => SegBytes}
         end,
     Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),
@@ -276,7 +294,6 @@ init(Config) ->
                                   forwards
                                  ], Config#{subscriptions => Subs,
                                             if_record_metrics => IfRecordMetrics}),
-
     ConnectFun = fun(SubsX) -> emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
     {ok, standing_by,
      #{connect_module => ConnectModule,
@@ -310,8 +327,13 @@ standing_by(enter, _, #{start_type := auto}) ->
     {keep_state_and_data, Action};
 standing_by(enter, _, #{start_type := manual}) ->
     keep_state_and_data;
+%% ensure_started will be deprecated in the future
 standing_by({call, From}, ensure_started, State) ->
     do_connect({call, From}, standing_by, State);
+standing_by({call, From}, ensure_connected, State) ->
+    do_connect({call, From}, standing_by, State);
+standing_by({call, From}, ensure_disconnected, _State) ->
+    {keep_state_and_data, [{reply, From, ok}]};
 standing_by(state_timeout, do_connect, State) ->
     {next_state, connecting, State};
 standing_by(info, Info, State) ->
@@ -328,6 +350,8 @@ connecting(enter, connected, #{reconnect_delay_ms := Timeout}) ->
     {keep_state_and_data, Action};
 connecting(enter, _, State) ->
     do_connect(enter, connecting, State);
+connecting({call, From}, ensure_disconnected, State) ->
+    {next_state, standing_by, State, [{reply, From, ok}]};
 connecting(state_timeout, connected, State) ->
     {next_state, connected, State};
 connecting(state_timeout, reconnect, _State) ->
@@ -463,23 +487,19 @@ do_connect(Type, StateName, #{ forwards := Forwards
                standing_by -> {call, Pid} = Type, Pid;
                connecting -> ?NO_FROM
            end,
-    DoEvent = fun (standing_by, StandingbyAction, _ConnectingAction) ->
-                      StandingbyAction;
-                  (connecting, _StandingbyAction, ConnectingAction) ->
-                      ConnectingAction
-              end,
     case ConnectFun(Subs) of
         {ok, ConnRef, Conn} ->
-            ?LOG(info, "Bridge ~p connected", [name()]),
-            State0 = State#{conn_ref => ConnRef, connection => Conn},
-            State1 = eval_bridge_handler(State0, connected),
-            StandingbyAction = {next_state, connected, State1, [{reply, From, ok}]},
-            ConnectingAction = {keep_state, State1, {state_timeout, 0, connected}},
-            DoEvent(StateName, StandingbyAction, ConnectingAction);
+            ?LOG(info, "Bridge ~p is connecting......", [name()]),
+            State1 = eval_bridge_handler(State#{conn_ref => ConnRef, connection => Conn}, connected),
+            case StateName of
+                standing_by -> {next_state, connected, State1, [{reply, From, ok}]};
+                connecting -> {keep_state, State1, {state_timeout, 0, connected}}
+            end;
         {error, Reason} ->
-            StandingbyAction = {keep_state_and_data, [{reply, From, {error, Reason}}]},
-            ConnectingAction = {keep_state_and_data, {state_timeout, Timeout, reconnect}},
-            DoEvent(StateName, StandingbyAction, ConnectingAction)
+            {keep_state_and_data, case StateName of
+                                      standing_by -> [{reply, From, {error, Reason}}];
+                                      connecting -> {state_timeout, Timeout, reconnect}
+                                  end}
     end.
 
 do_ensure_present(forwards, Topic, _) ->
@@ -621,7 +641,12 @@ format_mountpoint(undefined) ->
 format_mountpoint(Prefix) ->
     binary:replace(iolist_to_binary(Prefix), <<"${node}">>, atom_to_binary(node(), utf8)).
 
-name() -> {_, Name} = process_info(self(), registered_name), Name.
+name() -> case process_info(self(), registered_name) of
+              {_, Name} ->
+                  Name;
+              _ ->
+                  undefined
+          end.
 
 name(Id) -> list_to_atom(lists:concat([?MODULE, "_", Id])).
 

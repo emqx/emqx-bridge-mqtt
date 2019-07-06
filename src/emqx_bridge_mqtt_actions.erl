@@ -36,253 +36,286 @@
 -define(RESOURCE_TYPE_MQTT, 'bridge_mqtt').
 -define(RESOURCE_TYPE_RPC, 'bridge_rpc').
 
--define(RESOURCE_CONFIG_SPEC_MQTT,
-        #{bridge_name => #{order => 1,
-                           type => string,
-                           required => true,
-                           default => <<"aws">>,
-                           title => #{en => <<"Bridge Name">>,
-                                      zh => <<"桥接名称"/utf8>>
-                                     }
-                          },
-          address => #{order => 2,
-                       type => string,
-                       required => true,
-                       default => <<"127.0.0.1:1883">>,
-                       title => #{en => <<"Broker Address">>,
-                                  zh => <<"桥接地址"/utf8>>},
-                       description => #{en => <<"The MQTT Remote IP Address">>,
-                                        zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>
-                                       }
-                      },
-          proto_ver => #{order => 3,
-                         type => string,
-                         required => false,
-                         default => <<"mqttv4">>,
-                         enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
-                         title => #{en => <<"Protocol Version">>,
-                                    zh => <<"协议版本"/utf8>>},
-                         description => #{en => <<"Protocol version for MQTT bridge"
-                                                  "(Only for bridge with MQTT protocol)">>,
-                                          zh => <<"用于 MQTT 桥接的 MQTT 协议版本"
-                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>
-                                         }
-                        },
-          client_id => #{order => 4,
-                         type => string,
-                         required => false,
-                         default => <<"bridge_aws">>,
-                         title => #{en => <<"Client ID">>,
-                                    zh => <<"客户端 ID"/utf8>>},
-                         description => #{en => <<"Client Id for connecting to MQTT Broker"
-                                                  "(Only for bridge with MQTT protocol)">>,
-                                          zh => <<"用于桥接 MQTT Broker 的 Client Id"
-                                                  "（仅适用于 MQTT 协议桥接）"/utf8>>}
-                        },
-          username => #{order => 5,
-                        type => string,
-                        required => false,
-                        default => <<"user">>,
-                        title => #{en => <<"MQTT Username">>, zh => <<"MQTT 用户名"/utf8>>},
-                        description => #{en => <<"Username for connecting to MQTT Broker"
-                                                 "(Only for bridge with MQTT protocol)">>,
-                                         zh => <<"用于桥接 MQTT Broker 的 Clean Start 值"
-                                                 "（仅适用于 MQTT 协议桥接）"/utf8>>}
-                       },
-          password => #{order => 6,
-                        type => string,
-                        required => false,
-                        default => <<"passwd">>,
-                        title => #{en => <<"MQTT Password">>, zh => <<"MQTT 密码"/utf8>>},
-                        description => #{en => <<"Password for connecting to MQTT Broker"
-                                                 "(Only for bridge with MQTT protocol)">>,
-                                         zh => <<"用于桥接 MQTT Broker 的密码"
-                                                 "（仅适用于 MQTT 协议桥接）"/utf8>>}
-                       },
-          mountpoint => #{order => 7,
-                          type => string,
-                          required => true,
-                          default => <<"bridge/aws/${node}/">>,
-                          title => #{en => <<"Bridge MountPoint">>,
-                                     zh => <<"桥接挂载点"/utf8>>},
-                          description => #{en => <<"MountPoint for bridge topic<br/>"
-                                                   "Example: The topic of messages sent to `topic1` on local node"
-                                                   "will be transformed to `bridge/aws/${node}/topic1`">>,
-                                           zh => <<"桥接主题的挂载点<br/>"
-                                                   "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
-                                                   "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
-                                          }
-                         },
-          keepalive => #{order => 8,
-                         type => string,
-                         required => true,
-                         default => <<"60s">> ,
-                         title => #{en => <<"Ping interval">>,
-                                    zh => <<"桥接的心跳间隔"/utf8>>},
-                         description => #{en => <<"Ping interval">>,
-                                          zh => <<"桥接的心跳间隔"/utf8>>}
-                        },
-          reconnect_interval => #{order => 9,
-                                  type => string,
-                                  required => false,
-                                  default => <<"30s">>,
-                                  title => #{en => <<"Reconnect Interval">>,
-                                             zh => <<"重连间隔"/utf8>>},
-                                  description => #{en => <<"Start type of the bridge<br/>"
-                                                           "Enum: auto, manual">>,
-                                                   zh => <<"桥接的启动类型<br/>"
-                                                           "启动类型: auto, manual"/utf8>>}
-                                 },
-          retry_interval => #{order => 10,
-                              type => string,
-                              required => false,
-                              default => <<"20s">>,
-                              title => #{en => <<"Retry interval">>,
-                                         zh => <<"重传间隔"/utf8>>},
-                              description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
-                                               zh => <<"QoS1 消息重传间隔"/utf8>>}
-                             },
-          ssl => #{order => 11,
-                   type => string,
-                   required => true,
-                   default => <<"off">>,
-                   title => #{en => <<"Bridge ssl">>,
-                              zh => <<"Bridge ssl"/utf8>>
-                             },
-                   description => #{en => <<"The switch which used to enable ssl connection of the bridge">>,
-                                    zh => <<"用于启用 bridge ssl 连接的开关"/utf8>>
-                                   }
-                  },
-          cacertfile => #{order => 12,
-                          type => string,
-                          required => false,
-                          default => <<"etc/certs/cacert.pem">>,
-                          title => #{en => <<"CA certificates">>,
-                                     zh => <<"CA 证书"/utf8>>},
-                          description => #{en => <<"The file path of the CA certificates">>,
-                                           zh => <<"CA 证书所在路径"/utf8>>
-                                          }
-                         },
-          certfile => #{order => 13,
-                        type => string,
-                        required => false,
-                        default => <<"etc/certs/client-cert.pem">>,
-                        title => #{en => <<"SSL Certfile">>,
-                                   zh => <<"SSL 证书"/utf8>>},
-                        description => #{en => <<"The file path of the client certfile">>,
-                                         zh => <<"客户端证书文件所在路径"/utf8>>
-                                        }
-                       },
-          keyfile => #{order => 14,
-                       type => string,
-                       required => false,
-                       default => <<"etc/certs/client-key.pem">>,
-                       title => #{en => <<"SSL Keyfile">>,
-                                  zh => <<"SSL 密钥文件"/utf8>>},
-                       description => #{en => <<"The file path of the client keyfile">>,
-                                        zh => <<"客户端密钥文件所在路径"/utf8>>
-                                       }
-                      },
-          ciphers => #{order => 15,
-                       type => string,
-                       required => false,
-                       default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
-                       title => #{en => <<"SSL Ciphers">>,
-                                  zh => <<"SSL 密码算法"/utf8>>},
-                       description => #{en => <<"SSL Ciphers used by the bridge">>,
-                                        zh => <<"用于桥接的 SSL 密码算法"/utf8>>}
-                      }
-         }).
+-define(RESOURCE_CONFIG_SPEC_MQTT, #{
+        address => #{
+            order => 1,
+            type => string,
+            required => true,
+            default => <<"127.0.0.1:1883">>,
+            title => #{en => <<" Broker Address">>,
+                       zh => <<"远程 broker 地址"/utf8>>},
+            description => #{en => <<"The MQTT Remote Address">>,
+                             zh => <<"远程 MQTT Broker 的地址"/utf8>>}
+        },
+        proto_ver => #{
+            order => 2,
+            type => string,
+            required => false,
+            default => <<"mqttv4">>,
+            enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
+            title => #{en => <<"Protocol Version">>,
+                       zh => <<"协议版本"/utf8>>},
+            description => #{en => <<"MQTTT Protocol version">>,
+                             zh => <<"MQTT 协议版本"/utf8>>}
+        },
+        disk_cache => #{
+            order => 3,
+            type => string,
+            required => false,
+            default => <<"on">>,
+            enum => [<<"on">>, <<"off">>],
+            title => #{en => <<"Disk Cache">>,
+                       zh => <<"磁盘缓存"/utf8>>},
+            description => #{en => <<"The flag which determines whether messages"
+                                     "can be cached on local disk when bridge is"
+                                     "disconnected">>,
+                             zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
+                                     "盘队列上"/utf8>>}
+        },
+        client_id => #{
+            order => 4,
+            type => string,
+            required => false,
+            default => <<"bridge_aws">>,
+            title => #{en => <<"Client Id">>,
+                       zh => <<"客户端 Id"/utf8>>},
+            description => #{en => <<"Client Id for connecting to remote MQTT broker">>,
+                             zh => <<"远程 Broker 的 Client Id"/utf8>>}
+        },
+        username => #{
+            order => 5,
+            type => string,
+            required => false,
+            default => <<"user">>,
+            title => #{en => <<"Username">>, zh => <<"用户名"/utf8>>},
+            description => #{en => <<"Username for connecting to remote MQTT Broker">>,
+                             zh => <<"远程 Broker 的用户名"/utf8>>}
+        },
+        password => #{
+            order => 6,
+            type => string,
+            required => false,
+            default => <<"passwd">>,
+            title => #{en => <<"Password">>,
+                       zh => <<"密码"/utf8>>},
+            description => #{en => <<"Password for connecting to remote MQTT Broker">>,
+                             zh => <<"远程 Broker 的密码"/utf8>>}
+        },
+        mountpoint => #{
+            order => 7,
+            type => string,
+            required => true,
+            default => <<"bridge/aws/${node}/">>,
+            title => #{en => <<"Bridge MountPoint">>,
+                       zh => <<"桥接挂载点"/utf8>>},
+            description => #{
+                en => <<"MountPoint for bridge topic:<br/>"
+                        "Example: The topic of messages sent to `topic1` on local node"
+                        "will be transformed to `bridge/aws/${node}/topic1`">>,
+                zh => <<"桥接主题的挂载点:<br/>"
+                        "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
+                        "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
+            }
+        },
+        keepalive => #{
+            order => 8,
+            type => string,
+            required => true,
+            default => <<"60s">> ,
+            title => #{en => <<"Keepalive">>,
+                       zh => <<"心跳间隔"/utf8>>},
+            description => #{en => <<"Keepalive">>,
+                             zh => <<"心跳间隔"/utf8>>}
+        },
+        reconnect_interval => #{
+            order => 9,
+            type => string,
+            required => false,
+            default => <<"30s">>,
+            title => #{en => <<"Reconnect Interval">>,
+                       zh => <<"重连间隔"/utf8>>},
+            description => #{en => <<"Reconnect interval of bridge:<br/>">>,
+                             zh => <<"重连间隔"/utf8>>}
+        },
+        retry_interval => #{
+            order => 10,
+            type => string,
+            required => false,
+            default => <<"20s">>,
+            title => #{en => <<"Retry interval">>,
+                       zh => <<"重传间隔"/utf8>>},
+            description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
+                             zh => <<"消息重传间隔"/utf8>>}
+        },
+        bridge_mode => #{
+            order => 11,
+            type => boolean,
+            required => false,
+            default => true,
+            title => #{en => <<"Bridge Mode">>,
+                       zh => <<"桥接模式"/utf8>>},
+            description => #{en => <<"Bridge mode for MQTT bridge connection">>,
+                             zh => <<"MQTT 连接是否为桥接模式"/utf8>>}
+        },
+        ssl => #{
+            order => 12,
+            type => string,
+            required => true,
+            default => <<"off">>,
+            enum => [<<"on">>, <<"off">>],
+            title => #{en => <<"Bridge SSL">>,
+                       zh => <<"Bridge SSL"/utf8>>},
+            description => #{en => <<"Switch which used to enable ssl connection of the bridge">>,
+                             zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
+        },
+        cacertfile => #{
+            order => 13,
+            type => string,
+            required => false,
+            default => <<"etc/certs/cacert.pem">>,
+            title => #{en => <<"CA certificates">>,
+                       zh => <<"CA 证书"/utf8>>},
+            description => #{en => <<"The file path of the CA certificates">>,
+                             zh => <<"CA 证书路径"/utf8>>}
+        },
+        certfile => #{
+            order => 14,
+            type => string,
+            required => false,
+            default => <<"etc/certs/client-cert.pem">>,
+            title => #{en => <<"SSL Certfile">>,
+                       zh => <<"SSL 客户端证书"/utf8>>},
+            description => #{en => <<"The file path of the client certfile">>,
+                             zh => <<"客户端证书路径"/utf8>>}
+        },
+        keyfile => #{
+            order => 15,
+            type => string,
+            required => false,
+            default => <<"etc/certs/client-key.pem">>,
+            title => #{en => <<"SSL Keyfile">>,
+                       zh => <<"SSL 密钥文件"/utf8>>},
+            description => #{en => <<"The file path of the client keyfile">>,
+                             zh => <<"客户端密钥路径"/utf8>>}
+        },
+        ciphers => #{
+            order => 16,
+            type => string,
+            required => false,
+            default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
+            title => #{en => <<"SSL Ciphers">>,
+                       zh => <<"SSL 加密算法"/utf8>>},
+            description => #{en => <<"SSL Ciphers">>,
+                             zh => <<"SSL 加密算法"/utf8>>}
+        }
+    }).
 
--define(RESOURCE_CONFIG_SPEC_RPC,
-        #{bridge_name => #{order => 1,
-                           type => string,
-                           required => true,
-                           default => <<"aws">>,
-                           title => #{en => <<"Bridge Name">>,
-                                      zh => <<"桥接名称"/utf8>>
-                                     }
-                          },
-          address => #{order => 2,
-                       type => string,
-                       required => true,
-                       default => <<"emqx2@127.0.0.1">>,
-                       title => #{en => <<"EMQX Node Name">>,
-                                  zh => <<"EMQX 节点名称"/utf8>>},
-                       description => #{en => <<"EMQX remote NodeName">>,
-                                        zh => <<"远程 EMQX 节点名称 "/utf8>>
-                                       }
-                      },
-          mountpoint => #{order => 3,
-                          type => string,
-                          required => true,
-                          default => <<"bridge/aws/${node}/">>,
-                          title => #{en => <<"Bridge MountPoint">>,
-                                     zh => <<"桥接挂载点"/utf8>>},
-                          description => #{en => <<"MountPoint for bridge topic<br/>"
-                                                   "Example: The topic of messages sent to `topic1` on local node"
-                                                   "will be transformed to `bridge/aws/${node}/topic1`">>,
-                                           zh => <<"桥接主题的挂载点<br/>"
-                                                   "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
-                                                   "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
-                                          }
-                         },
-          retry_interval => #{order => 4,
-                              type => string,
-                              required => false,
-                              default => <<"20s">>,
-                              title => #{en => <<"Retry interval">>,
-                                         zh => <<"重传间隔"/utf8>>},
-                              description => #{en => <<"Retry interval for bridge QoS1 message delivering">>,
-                                               zh => <<"QoS1 消息重传间隔"/utf8>>}
-                             }
-         }).
+-define(RESOURCE_CONFIG_SPEC_RPC, #{
+        address => #{
+            order => 1,
+            type => string,
+            required => true,
+            default => <<"emqx2@127.0.0.1">>,
+            title => #{en => <<"EMQ X Node Name">>,
+                       zh => <<"EMQ X 节点名称"/utf8>>},
+            description => #{en => <<"EMQ X Remote Node Name">>,
+                             zh => <<"远程 EMQ X 节点名称 "/utf8>>}
+        },
+        mountpoint => #{
+            order => 2,
+            type => string,
+            required => true,
+            default => <<"bridge/aws/${node}/">>,
+            title => #{en => <<"Bridge MountPoint">>,
+                       zh => <<"桥接挂载点"/utf8>>},
+            description => #{en => <<"MountPoint for bridge topic<br/>"
+                                     "Example: The topic of messages sent to `topic1` on local node"
+                                     "will be transformed to `bridge/aws/${node}/topic1`">>,
+                             zh => <<"桥接主题的挂载点<br/>"
+                                     "示例: 本地节点向 `topic1` 发消息，远程桥接节点的主题"
+                                     "会变换为 `bridge/aws/${node}/topic1`"/utf8>>}
+        },
+        pool_size => #{
+            order => 3,
+            type => number,
+            required => true,
+            default => 8,
+            title => #{en => <<"Pool Size">>,
+                       zh => <<"连接池大小"/utf8>>},
+            description => #{en => <<"MQTT/RPC Connection Pool Size">>,
+                             zh => <<"连接池大小"/utf8>>}
+        },
+        reconnect_interval => #{
+            order => 4,
+            type => string,
+            required => false,
+            default => <<"30s">>,
+            title => #{en => <<"Reconnect Interval">>,
+                       zh => <<"重连间隔"/utf8>>},
+            description => #{en => <<"Reconnect Interval of bridge">>,
+                             zh => <<"重连间隔"/utf8>>}
+        },
+        disk_cache => #{
+            order => 5,
+            type => string,
+            required => false,
+            default => <<"on">>,
+            enum => [<<"on">>, <<"off">>],
+            title => #{en => <<"Disk Cache">>,
+                       zh => <<"磁盘缓存"/utf8>>},
+            description => #{en => <<"The flag which determines whether messages"
+                                     "can be cached on local disk when bridge is"
+                                     "disconnected">>,
+                             zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
+                                     "盘队列上"/utf8>>}
+        }
+    }).
 
--define(ACTION_PARAM_RESOURCE,
-        #{type => string,
-          required => true,
-          title => #{en => <<"Resource ID">>, zh => <<"资源 ID"/utf8>>},
-          description => #{en => <<"Bind a resource to this action">>,
-                           zh => <<"给动作绑定一个资源"/utf8>>
-                          }
-         }).
+-define(ACTION_PARAM_RESOURCE, #{
+        type => string,
+        required => true,
+        title => #{en => <<"Resource ID">>, zh => <<"资源 ID"/utf8>>},
+        description => #{en => <<"Bind a resource to this action">>,
+                         zh => <<"给动作绑定一个资源"/utf8>>}
+    }).
 
--resource_type(#{name => ?RESOURCE_TYPE_MQTT,
-                 create => on_resource_create,
-                 status => on_get_resource_status,
-                 destroy => on_resource_destroy,
-                 params => ?RESOURCE_CONFIG_SPEC_MQTT,
-                 title => #{en => <<"MQTT Bridge">>, zh => <<"MQTT Bridge"/utf8>>},
-                 description => #{en => <<"MQTT Message Bridge">>, zh => <<"MQTT 消息桥接"/utf8>>}
-                }).
+-resource_type(#{
+        name => ?RESOURCE_TYPE_MQTT,
+        create => on_resource_create,
+        status => on_get_resource_status,
+        destroy => on_resource_destroy,
+        params => ?RESOURCE_CONFIG_SPEC_MQTT,
+        title => #{en => <<"MQTT Bridge">>, zh => <<"MQTT Bridge"/utf8>>},
+        description => #{en => <<"MQTT Message Bridge">>, zh => <<"MQTT 消息桥接"/utf8>>}
+    }).
 
--resource_type(#{name => ?RESOURCE_TYPE_RPC,
-                 create => on_resource_create,
-                 status => on_get_resource_status,
-                 destroy => on_resource_destroy,
-                 params => ?RESOURCE_CONFIG_SPEC_RPC,
-                 title => #{en => <<"RPC Bridge">>, zh => <<"RPC Bridge"/utf8>>},
-                 description => #{en => <<"EMQX RPC Bridge">>, zh => <<"EMQX RPC 消息桥接"/utf8>>}
-                }).
+-resource_type(#{
+        name => ?RESOURCE_TYPE_RPC,
+        create => on_resource_create,
+        status => on_get_resource_status,
+        destroy => on_resource_destroy,
+        params => ?RESOURCE_CONFIG_SPEC_RPC,
+        title => #{en => <<"EMQX Bridge">>, zh => <<"EMQX Bridge"/utf8>>},
+        description => #{en => <<"EMQ X RPC Bridge">>, zh => <<"EMQ X RPC 消息桥接"/utf8>>}
+    }).
 
--rule_action(#{name => data_to_mqtt_broker,
-               for => '$any',
-               types => [?RESOURCE_TYPE_MQTT],
-               create => on_action_create_data_to_mqtt_broker,
-               params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
-               title => #{en => <<"Data bridge to MQTT Broker">>,
-                          zh => <<"桥接数据到 MQTT Broker"/utf8>>
-                         },
-               description => #{en => <<"Store Data to Kafka">>,
-                                zh => <<"桥接数据到 MQTT Broker"/utf8>>
-                               }
-              }).
+-rule_action(#{
+        name => data_to_mqtt_broker,
+        for => 'message.publish',
+        types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
+        create => on_action_create_data_to_mqtt_broker,
+        params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
+        title => #{en => <<"Data bridge to MQTT Broker">>,
+                   zh => <<"桥接数据到 MQTT Broker"/utf8>>},
+        description => #{en => <<"Bridge Data to MQTT Broker">>,
+                         zh => <<"桥接数据到 MQTT Broker"/utf8>>}
+    }).
 
 on_resource_create(ResId, Params) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
     {ok, _} = application:ensure_all_started(ecpool),
-    Options = options(Params),
     PoolName = pool_name(ResId),
+    Options = options(Params, PoolName),
     start_resource(ResId, PoolName, Options),
     case test_resource_status(PoolName) of
         true -> ok;
@@ -301,18 +334,26 @@ start_resource(ResId, PoolName, Options) ->
             start_resource(ResId, PoolName, Options);
         {error, Reason} ->
             ?LOG(error, "Initiate Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
+            on_resource_destroy(ResId, #{<<"pool">> => PoolName}),
             error({{?RESOURCE_TYPE_MQTT, ResId}, create_failed})
     end.
 
 test_resource_status(PoolName) ->
-    ecpool:with_client(PoolName, fun(Bridge) ->
-                                         try emqx_bridge_worker:status(Bridge) of
-                                             connected -> true;
-                                             _ -> false
-                                         catch _Error:_Reason ->
-                                                 false
-                                         end
-                                 end).
+    IsConnected = fun(Worker) ->
+                          case ecpool_worker:client(Worker) of
+                              {ok, Bridge} ->
+                                  try emqx_bridge_worker:status(Bridge) of
+                                      connected -> true;
+                                      _ -> false
+                                  catch _Error:_Reason ->
+                                          false
+                                  end;
+                              {error, _} ->
+                                  false
+                          end
+                  end,
+    Status = [IsConnected(Worker) || {_WorkerName, Worker} <- ecpool:workers(PoolName)],
+    lists:any(fun(St) -> St =:= true end, Status).
 
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
 on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
@@ -322,12 +363,12 @@ on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
 on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Destroying Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
         case ecpool:stop_sup_pool(PoolName) of
-        ok ->
-            ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
-        {error, Reason} ->
-            ?LOG(error, "Destroy Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
-            error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
-    end.
+            ok ->
+                ?LOG(info, "Destroyed Resource ~p Successfully, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]);
+            {error, Reason} ->
+                ?LOG(error, "Destroy Resource ~p failed, ResId: ~p, ~p", [?RESOURCE_TYPE_MQTT, ResId, Reason]),
+                error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
+        end.
 
 on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
@@ -338,18 +379,12 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
                                  from = From,
                                  flags = Flags,
                                  topic = Topic,
-                                 payload = format_data(Msg),
+                                 payload = jsx:encode(Msg),
                                  timestamp = TimeStamp},
             ecpool:with_client(PoolName, fun(BridgePid) ->
                                              BridgePid ! {dispatch, rule_engine, BrokerMsg}
                                          end)
     end.
-
-format_data(Msg) ->
-    jsx:encode(maps:merge(Msg, base_data())).
-
-base_data() ->
-    #{node => node(), ts => emqx_time:now_ms()}.
 
 tls_versions() ->
     ['tlsv1.2','tlsv1.1', tlsv1].
@@ -376,72 +411,60 @@ scan_string(TermString) ->
     {ok, Term} = erl_parse:parse_term(Tokens),
     Term.
 
-connect(Options) ->
-    BridgeName = proplists:get_value(bridge_name, Options),
-    emqx_bridge_worker:start_link(BridgeName, Options).
+connect(Options) when is_list(Options) ->
+    connect(maps:from_list(Options));
+connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name := Pool}) ->
+    Options0 = case DiskCache of
+                   true ->
+                       QueueOption = #{replayq_dir =>
+                                           filename:join([emqx_config:get_env(data_dir),
+                                                          atom_to_list(Pool),
+                                                          integer_to_list(Id)])},
+                       Options#{queue => QueueOption};
+                   false ->
+                       Options
+               end,
+    Options1 = maps:without([ecpool_worker_id, pool_name], Options0),
+    emqx_bridge_worker:start_link(Options1).
 
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
 
-options(#{<<"bridge_name">> := Name,
-          <<"address">> := Address,
-          <<"proto_ver">> := ProtoVer,
-          <<"client_id">> := ClientId,
-          <<"username">> := Username,
-          <<"password">> := Password,
-          <<"mountpoint">> := MountPoint,
-          <<"ssl">> := SslFlag,
-          <<"cacertfile">> := Cacertfile,
-          <<"certfile">> := Certfile,
-          <<"keyfile">> := Keyfile,
-          <<"ciphers">> := Ciphers,
-          <<"keepalive">> := KeepAlive,
-          <<"reconnect_interval">> := ReconnectInterval,
-          <<"retry_interval">> := RetryInterval}) ->
-    BridgeName = binary_to_atom(Name, utf8),
-    case is_node_addr(Address) of
-        true ->
-            [{bridge_name, BridgeName},
-             {address, binary_to_atom(Address, utf8)},
-             {connect_module, emqx_bridge_rpc},
-             {max_inflight_batches, 32},
-             {mountpoint, str(MountPoint)},
-             {queue, #{batch_bytes_limit => 1048576000,
-                       batch_count_limit => 32,
-                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
-                       replayq_seg_bytes => 10485760}},
-             {start_type, auto},
-             {if_record_metrics, false},
-             {pool_size, 1}];
-        false ->
-            [{bridge_name, BridgeName},
-             {address, binary_to_list(Address)},
-             {clean_start, true},
-             {client_id, ClientId},
-             {connect_module, emqx_bridge_mqtt},
-             {keepalive, cuttlefish_duration:parse(str(KeepAlive), s)},
-             {max_inflight_batches, 32},
-             {mountpoint, str(MountPoint)},
-             {username, str(Username)},
-             {password, str(Password)},
-             {proto_ver, mqtt_ver(ProtoVer)},
-             {queue, #{batch_bytes_limit => 1048576000,
-                       batch_count_limit => 32,
-                       replayq_dir => filename:join([emqx_config:get_env(data_dir), atom_to_list(BridgeName)]),
-                       replayq_seg_bytes => 10485760}},
-             {reconnect_delay_ms, cuttlefish_duration:parse(str(ReconnectInterval), ms)},
-             {retry_interval, cuttlefish_duration:parse(str(RetryInterval), ms)},
-             {ssl, cuttlefish_flag:parse(str(SslFlag))},
-             {ssl_opts, [{versions, tls_versions()},
-                         {ciphers, ciphers(Ciphers)},
-                         {keyfile, str(Keyfile)},
-                         {certfile, str(Certfile)},
-                         {cacertfile, str(Cacertfile)}
-                        ]},
-             {start_type, auto},
-             {if_record_metrics, false},
-             {pool_size, 1}]
-    end.
+options(Options, PoolName) ->
+    GetD = fun(Key, Default) -> maps:get(Key, Options, Default) end,
+    Get = fun(Key) -> GetD(Key, undefined) end,
+    Address = Get(<<"address">>),
+    [{max_inflight_batches, 32},
+     {mountpoint, str(Get(<<"mountpoint">>))},
+     {disk_cache, cuttlefish_flag:parse(str(Get(<<"disk_cache">>)))},
+     {start_type, auto},
+     {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
+     {if_record_metrics, false},
+     {pool_size, GetD(<<"pool_size">>, 1)},
+     {pool_name, PoolName}
+    ] ++ case is_node_addr(Address) of
+             true ->
+                 [{address, binary_to_atom(Get(<<"address">>), utf8)},
+                  {connect_module, emqx_bridge_rpc}];
+             false ->
+                 [{address, binary_to_list(Address)},
+                  {bridge_mode, GetD(<<"bridge_mode">>, true)},
+                  {clean_start, true},
+                  {client_id, str(Get(<<"client_id">>))},
+                  {connect_module, emqx_bridge_mqtt},
+                  {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
+                  {username, str(Get(<<"username">>))},
+                  {password, str(Get(<<"password">>))},
+                  {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
+                  {retry_interval, cuttlefish_duration:parse(str(Get(<<"retry_interval">>)), ms)},
+                  {ssl, cuttlefish_flag:parse(str(Get(<<"ssl">>)))},
+                  {ssl_opts, [{versions, tls_versions()},
+                              {ciphers, ciphers(Get(<<"ciphers">>))},
+                              {keyfile, str(Get(<<"keyfile">>))},
+                              {certfile, str(Get(<<"certfile">>))},
+                              {cacertfile, str(Get(<<"cacertfile">>))}
+                             ]}]
+         end.
 
 mqtt_ver(ProtoVer) ->
     case ProtoVer of
