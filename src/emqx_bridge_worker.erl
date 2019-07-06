@@ -290,18 +290,14 @@ init(Config) ->
                                       end, Get(subscriptions, []))),
     IfRecordMetrics = Get(if_record_metrics, true),
     ConnectModule = maps:get(connect_module, Config),
-    ConnectConfig0 = maps:without([connect_module,
-                                   queue,
-                                   reconnect_delay_ms,
-                                   max_inflight_batches,
-                                   mountpoint,
-                                   forwards
-                                  ], Config#{subscriptions => Subs,
-                                             if_record_metrics => IfRecordMetrics}),
-    ConnectConfig = case Get(client_id, undefined) of
-                        undefined -> ConnectConfig0#{client_id => to_base62(gen())};
-                        _Other -> ConnectConfig0
-                    end,
+    ConnectConfig = maps:without([connect_module,
+                                  queue,
+                                  reconnect_delay_ms,
+                                  max_inflight_batches,
+                                  mountpoint,
+                                  forwards
+                                 ], Config#{subscriptions => Subs,
+                                            if_record_metrics => IfRecordMetrics}),
     ConnectFun = fun(SubsX) -> emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
     {ok, standing_by,
      #{connect_module => ConnectModule,

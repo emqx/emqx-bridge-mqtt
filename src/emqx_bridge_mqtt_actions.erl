@@ -44,10 +44,10 @@
             type => string,
             required => true,
             default => <<"127.0.0.1:1883">>,
-            title => #{en => <<"Broker Address">>,
-                       zh => <<"桥接地址"/utf8>>},
-            description => #{en => <<"The MQTT Remote IP Address">>,
-                             zh => <<"远程 MQTT Broker 的 IP 地址"/utf8>>}
+            title => #{en => <<" Broker Address">>,
+                       zh => <<"远程 broker 地址"/utf8>>},
+            description => #{en => <<"The MQTT Remote Address">>,
+                             zh => <<"远程 MQTT Broker 的地址"/utf8>>}
         },
         proto_ver => #{
             order => 2,
@@ -57,8 +57,8 @@
             enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
             title => #{en => <<"Protocol Version">>,
                        zh => <<"协议版本"/utf8>>},
-            description => #{en => <<"Protocol version for MQTT bridge">>,
-                             zh => <<"用于 MQTT 桥接的 MQTT 协议版本"/utf8>>}
+            description => #{en => <<"MQTTT Protocol version">>,
+                             zh => <<"MQTT 协议版本"/utf8>>}
         },
         disk_cache => #{
             order => 3,
@@ -79,19 +79,19 @@
             type => string,
             required => false,
             default => <<"bridge_aws">>,
-            title => #{en => <<"Client ID">>,
-                       zh => <<"客户端 ID"/utf8>>},
-            description => #{en => <<"Client Id for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 Remote Broker 的 Client Id"/utf8>>}
+            title => #{en => <<"Client Id">>,
+                       zh => <<"客户端 Id"/utf8>>},
+            description => #{en => <<"Client Id for connecting to remote MQTT broker">>,
+                             zh => <<"远程 Broker 的 Client Id"/utf8>>}
         },
         username => #{
             order => 5,
             type => string,
             required => false,
             default => <<"user">>,
-            title => #{en => <<"Username">>, zh => <<"MQTT 用户名"/utf8>>},
-            description => #{en => <<"Username for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 Remote Broker 的 Username"/utf8>>}
+            title => #{en => <<"Username">>, zh => <<"用户名"/utf8>>},
+            description => #{en => <<"Username for connecting to remote MQTT Broker">>,
+                             zh => <<"远程 Broker 的用户名"/utf8>>}
         },
         password => #{
             order => 6,
@@ -100,8 +100,8 @@
             default => <<"passwd">>,
             title => #{en => <<"Password">>,
                        zh => <<"密码"/utf8>>},
-            description => #{en => <<"Password for connecting to MQTT Broker">>,
-                             zh => <<"用于桥接 Remote Broker 的密码"/utf8>>}
+            description => #{en => <<"Password for connecting to remote MQTT Broker">>,
+                             zh => <<"远程 Broker 的密码"/utf8>>}
         },
         mountpoint => #{
             order => 7,
@@ -125,9 +125,9 @@
             required => true,
             default => <<"60s">> ,
             title => #{en => <<"Keepalive">>,
-                       zh => <<"桥接的心跳间隔"/utf8>>},
+                       zh => <<"心跳间隔"/utf8>>},
             description => #{en => <<"Keepalive">>,
-                             zh => <<"桥接的心跳间隔"/utf8>>}
+                             zh => <<"心跳间隔"/utf8>>}
         },
         reconnect_interval => #{
             order => 9,
@@ -137,7 +137,7 @@
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
             description => #{en => <<"Reconnect interval of bridge:<br/>">>,
-                             zh => <<"桥接的重连间隔"/utf8>>}
+                             zh => <<"重连间隔"/utf8>>}
         },
         retry_interval => #{
             order => 10,
@@ -186,9 +186,9 @@
             required => false,
             default => <<"etc/certs/client-cert.pem">>,
             title => #{en => <<"SSL Certfile">>,
-                       zh => <<"SSL 证书"/utf8>>},
+                       zh => <<"SSL 客户端证书"/utf8>>},
             description => #{en => <<"The file path of the client certfile">>,
-                             zh => <<"客户端证书文件路径"/utf8>>}
+                             zh => <<"客户端证书路径"/utf8>>}
         },
         keyfile => #{
             order => 15,
@@ -198,7 +198,7 @@
             title => #{en => <<"SSL Keyfile">>,
                        zh => <<"SSL 密钥文件"/utf8>>},
             description => #{en => <<"The file path of the client keyfile">>,
-                             zh => <<"客户端密钥文件所在路径"/utf8>>}
+                             zh => <<"客户端密钥路径"/utf8>>}
         },
         ciphers => #{
             order => 16,
@@ -255,7 +255,7 @@
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
             description => #{en => <<"Reconnect Interval of bridge">>,
-                             zh => <<"桥接的重连间隔"/utf8>>}
+                             zh => <<"重连间隔"/utf8>>}
         },
         disk_cache => #{
             order => 5,
@@ -297,7 +297,7 @@
         status => on_get_resource_status,
         destroy => on_resource_destroy,
         params => ?RESOURCE_CONFIG_SPEC_RPC,
-        title => #{en => <<"RPC Bridge">>, zh => <<"RPC Bridge"/utf8>>},
+        title => #{en => <<"EMQX Bridge">>, zh => <<"EMQX Bridge"/utf8>>},
         description => #{en => <<"EMQ X RPC Bridge">>, zh => <<"EMQ X RPC 消息桥接"/utf8>>}
     }).
 
@@ -309,7 +309,7 @@
         params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
         title => #{en => <<"Data bridge to MQTT Broker">>,
                    zh => <<"桥接数据到 MQTT Broker"/utf8>>},
-        description => #{en => <<"Store Data to Kafka">>,
+        description => #{en => <<"Bridge Data to MQTT Broker">>,
                          zh => <<"桥接数据到 MQTT Broker"/utf8>>}
     }).
 
@@ -416,12 +416,14 @@ scan_string(TermString) ->
 connect(Options) when is_list(Options) ->
     connect(maps:from_list(Options));
 connect(Options = #{queue := Queue}) ->
+    {_State, Pool, Id, _Client, _Mod, _OnConnect, _Opts} = sys:get_state(self()),
     NewOptions = case maps:get(replayq_dir, Queue, false) of
                      true ->
                          NewQueue =
                              Queue#{replayq_dir =>
-                                        filename:join([emqx_config:get_env(data_dir), "pool",
-                                                       binary_to_list(to_base62(gen()))])},
+                                        filename:join([emqx_config:get_env(data_dir),
+                                                       atom_to_list(Pool),
+                                                       integer_to_list(Id)])},
                          Options#{queue => NewQueue};
                      false ->
                          Options
