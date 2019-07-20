@@ -35,7 +35,7 @@
 
 -define(HEARTBEAT_INTERVAL, timer:seconds(1)).
 
--define(RPC, gen_rpc).
+-define(RPC, emqx_rpc).
 
 start(#{address := Remote}) ->
     case poke(Remote) of
