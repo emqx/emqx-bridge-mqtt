@@ -16,13 +16,13 @@
 -include_lib("eunit/include/eunit.hrl").
 
 send_and_ack_test() ->
-    %% delegate from gen_rpc to rpc for unit test
-    meck:new(gen_rpc, [passthrough, no_history]),
-    meck:expect(gen_rpc, call, 4,
+    %% delegate from emqx_rpc to rpc for unit test
+    meck:new(emqx_rpc, [passthrough, no_history]),
+    meck:expect(emqx_rpc, call, 4,
                 fun(Node, Module, Fun, Args) ->
                         rpc:call(Node, Module, Fun, Args)
                 end),
-    meck:expect(gen_rpc, cast, 4,
+    meck:expect(emqx_rpc, cast, 4,
                 fun(Node, Module, Fun, Args) ->
                         rpc:cast(Node, Module, Fun, Args)
                 end),
@@ -38,6 +38,6 @@ send_and_ack_test() ->
         end,
         ok = emqx_bridge_rpc:stop(Pid, Node)
     after
-        meck:unload(gen_rpc),
+        meck:unload(emqx_rpc),
         meck:unload(emqx_bridge_worker)
     end.
