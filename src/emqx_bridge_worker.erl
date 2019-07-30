@@ -593,17 +593,24 @@ do_ack(#{inflight := Inflight}, Ref) ->
 
 subscribe_local_topics(Topics) -> lists:foreach(fun subscribe_local_topic/1, Topics).
 
-subscribe_local_topic(Topic0) ->
-    Topic = topic(Topic0),
-    try
-        emqx_topic:validate({filter, Topic})
-    catch
-        error : Reason ->
-            erlang:error({bad_topic, Topic, Reason})
-    end,
-    ok = emqx_broker:subscribe(Topic, #{qos => ?QOS_1, subid => name()}).
+subscribe_local_topic(Topic) ->
+    do_subscribe(Topic).
 
 topic(T) -> iolist_to_binary(T).
+
+validate(RawTopic) ->
+    Topic = topic(RawTopic),
+    try emqx_topic:validate(Topic) of
+        _Success -> Topic
+    catch
+        error:Reason ->
+            error({bad_topic, Topic, Reason})
+    end.
+
+do_subscribe(RawTopic) ->
+    TopicFilter = validate(RawTopic),
+    {Topic, SubOpts} = emqx_topic:parse(TopicFilter, #{qos => ?QOS_1}),
+    emqx_broker:subscribe(Topic, name(), SubOpts).
 
 disconnect(#{connection := Conn,
              conn_ref := ConnRef,
