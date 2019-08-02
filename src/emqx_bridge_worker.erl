@@ -531,7 +531,7 @@ do_ensure_absent(subscriptions, Topic, #{connect_module := ConnectModule,
 
 collect(Acc) ->
     receive
-        {dispatch, _, Msg} ->
+        {deliver, _, Msg} ->
             collect([Msg | Acc])
     after
         0 ->

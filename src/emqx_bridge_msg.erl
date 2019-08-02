@@ -73,7 +73,7 @@ estimate_size(#message{topic = Topic, payload = Payload}) ->
     size(Topic) + size(Payload).
 
 %% @doc By message/batch receiver, transform received batch into
-%% messages to dispatch to local brokers.
+%% messages to deliver to local brokers.
 to_broker_msgs(Batch) -> lists:map(fun to_broker_msg/1, Batch).
 
 to_broker_msg(#message{} = Msg) ->
