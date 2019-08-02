@@ -119,7 +119,7 @@
 
 -logger_header("[Bridge]").
 
-%% same as default in-flight limit for emqx_client
+%% same as default in-flight limit for emqtt
 -define(DEFAULT_BATCH_COUNT, 32).
 -define(DEFAULT_BATCH_BYTES, 1 bsl 20).
 -define(DEFAULT_SEND_AHEAD, 8).
@@ -433,7 +433,7 @@ common(_StateName, {call, From}, {ensure_absent, What, Topic}, State) ->
 common(_StateName, {call, From}, ensure_stopped, _State) ->
     {stop_and_reply, {shutdown, manual},
      [{reply, From, ok}]};
-common(_StateName, info, {dispatch, _, Msg},
+common(_StateName, info, {deliver, _,  Msg},
        #{replayq := Q} = State) ->
     NewQ = replayq:append(Q, collect([Msg])),
     {keep_state, State#{replayq => NewQ}, ?maybe_send};

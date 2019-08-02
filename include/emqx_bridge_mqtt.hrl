@@ -15,3 +15,12 @@
 %%--------------------------------------------------------------------
 
 -define(APP, emqx_bridge_mqtt).
+
+-ifndef(EMQX_BRIDGE_HRL).
+-define(EMQX_BRIDGE_HRL, true).
+-include_lib("emqx/include/emqx_mqtt.hrl").
+-record(mqtt_msg, {qos = ?QOS_0, retain = false, dup = false,
+                   packet_id, topic, props, payload}).
+-endif.
+
+

@@ -58,9 +58,9 @@ start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
                            host => Host,
                            port => Port
                           },
-    case emqx_client:start_link(ClientConfig) of
+    case emqtt:start_link(ClientConfig) of
         {ok, Pid} ->
-            case emqx_client:connect(Pid) of
+            case emqtt:connect(Pid) of
                 {ok, _} ->
                     try
                         subscribe_remote_topics(Pid, maps:get(subscriptions, Config, [])),
@@ -80,12 +80,12 @@ start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
     end.
 
 stop(Ref, #{ack_collector := AckCollector, client_pid := Pid}) ->
-    safe_stop(Pid, fun() -> emqx_client:stop(Pid) end, 1000),
+    safe_stop(Pid, fun() -> emqtt:stop(Pid) end, 1000),
     safe_stop(AckCollector, fun() -> AckCollector ! ?STOP(Ref) end, 1000),
     ok.
 
 ensure_subscribed(#{client_pid := Pid}, Topic, QoS) when is_pid(Pid) ->
-    case emqx_client:subscribe(Pid, Topic, QoS) of
+    case emqtt:subscribe(Pid, Topic, QoS) of
         {ok, _, _} -> ok;
         Error -> Error
     end;
@@ -94,7 +94,7 @@ ensure_subscribed(_Conn, _Topic, _QoS) ->
     ok.
 
 ensure_unsubscribed(#{client_pid := Pid}, Topic) when is_pid(Pid) ->
-    case emqx_client:unsubscribe(Pid, Topic) of
+    case emqtt:unsubscribe(Pid, Topic) of
         {ok, _, _} -> ok;
         Error -> Error
     end;
@@ -123,7 +123,7 @@ send(Conn, Batch, IfRecordMetrics) ->
     send(Conn, Batch, [], IfRecordMetrics).
 
 send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Rest], Acc, IfRecordMetrics) ->
-    case emqx_client:publish(ClientPid, Msg) of
+    case emqtt:publish(ClientPid, Msg) of
         {ok, PktId} when Rest =:= [] ->
             %% last one sent
             Ref = make_ref(),
@@ -179,7 +179,7 @@ handle_puback(AckCollector, #{packet_id := PktId, reason_code := RC}) ->
 
 %% Message published from remote broker. Import to local broker.
 import_msg(Msg, IfRecordMetrics) ->
-    %% auto-ack should be enabled in emqx_client, hence dummy ack-fun.
+    %% auto-ack should be enabled in emqtt, hence dummy ack-fun.
     emqx_bridge_worker:import_batch([Msg], _AckFun = fun() -> ok end, IfRecordMetrics).
 
 make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics) ->
@@ -190,7 +190,7 @@ make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics) ->
 
 subscribe_remote_topics(ClientPid, Subscriptions) ->
     lists:foreach(fun({Topic, Qos}) ->
-                          case emqx_client:subscribe(ClientPid, Topic, Qos) of
+                          case emqtt:subscribe(ClientPid, Topic, Qos) of
                               {ok, _, _} -> ok;
                               Error -> throw(Error)
                           end

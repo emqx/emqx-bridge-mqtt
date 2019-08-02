@@ -19,15 +19,15 @@
 
 send_and_ack_test() ->
     %% delegate from gen_rpc to rpc for unit test
-    meck:new(emqx_client, [passthrough, no_history]),
-    meck:expect(emqx_client, start_link, 1,
+    meck:new(emqtt, [passthrough, no_history]),
+    meck:expect(emqtt, start_link, 1,
                 fun(#{msg_handler := Hdlr}) ->
                         {ok, spawn_link(fun() -> fake_client(Hdlr) end)}
                 end),
-    meck:expect(emqx_client, connect, 1, {ok, dummy}),
-    meck:expect(emqx_client, stop, 1,
+    meck:expect(emqtt, connect, 1, {ok, dummy}),
+    meck:expect(emqtt, stop, 1,
                 fun(Pid) -> Pid ! stop end),
-    meck:expect(emqx_client, publish, 2,
+    meck:expect(emqtt, publish, 2,
                 fun(Client, Msg) ->
                         Client ! {publish, Msg},
                         {ok, Msg} %% as packet id
@@ -42,7 +42,7 @@ send_and_ack_test() ->
         receive {batch_ack, AckRef} -> ok end,
         ok = emqx_bridge_mqtt:stop(Ref, Conn)
     after
-        meck:unload(emqx_client)
+        meck:unload(emqtt)
     end.
 
 fake_client(#{puback := PubAckCallback} = Hdlr) ->

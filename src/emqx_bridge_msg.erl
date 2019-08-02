@@ -24,8 +24,13 @@
 -export_type([msg/0]).
 
 -include_lib("emqx/include/emqx.hrl").
--include_lib("emqx/include/emqx_mqtt.hrl").
--include_lib("emqx/include/emqx_client.hrl").
+%% -include_lib("emqx/include/emqx_mqtt.hrl").
+
+%% -include_lib("emqx/include/emqx_client.hrl").
+-include_lib("emqtt/include/emqtt.hrl").
+
+-record(mqtt_msg, {qos = ?QOS_0, retain = false, dup = false,
+                   packet_id, topic, props, payload}).
 
 -type msg() :: emqx_types:message().
 -type exp_msg() :: emqx_types:message() | #mqtt_msg{}.
