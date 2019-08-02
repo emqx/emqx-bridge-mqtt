@@ -454,16 +454,16 @@ ensure_present(Key, Topic, State) ->
         true ->
             {ok, State};
         false ->
-            R = do_ensure_present(Key, Topic, State),
-            {R, State#{Key := lists:usort([Topic | Topics])}}
+            {R, Topic1} = do_ensure_present(Key, Topic, State),
+            {R, State#{Key := lists:usort([Topic1 | Topics])}}
     end.
 
 ensure_absent(Key, Topic, State) ->
     Topics = maps:get(Key, State),
     case is_topic_present(Topic, Topics) of
         true ->
-            R = do_ensure_absent(Key, Topic, State),
-            {R, State#{Key := ensure_topic_absent(Topic, Topics)}};
+            {R, Topic1} = do_ensure_absent(Key, Topic, State),
+            {R, State#{Key := ensure_topic_absent(Topic1, Topics)}};
         false ->
             {ok, State}
     end.
@@ -503,22 +503,22 @@ do_connect(Type, StateName, #{ forwards := Forwards
     end.
 
 do_ensure_present(forwards, Topic, _) ->
-    ok = subscribe_local_topic(Topic);
-do_ensure_present(subscriptions, _Topic, #{connect_module := _ConnectModule,
+    subscribe_local_topic(Topic);
+do_ensure_present(subscriptions, Topic, #{connect_module := _ConnectModule,
                                            connection := undefined}) ->
-    {error, no_connection};
+    {{error, no_connection}, Topic};
 do_ensure_present(subscriptions, {Topic, QoS},
                   #{connect_module := ConnectModule, connection := Conn}) ->
     case erlang:function_exported(ConnectModule, ensure_subscribed, 3) of
         true ->
             _ = ConnectModule:ensure_subscribed(Conn, Topic, QoS),
-            ok;
+            {ok, {Topic, QoS}};
         false ->
-            {error, no_remote_subscription_support}
+            {{error, no_remote_subscription_support}, {Topic, QoS}}
     end.
 
 do_ensure_absent(forwards, Topic, _) ->
-    ok = emqx_broker:unsubscribe(Topic);
+    do_unsubscribe(Topic);
 do_ensure_absent(subscriptions, _Topic, #{connect_module := _ConnectModule,
                                           connection := undefined}) ->
     {error, no_connection};
@@ -526,7 +526,7 @@ do_ensure_absent(subscriptions, Topic, #{connect_module := ConnectModule,
                                          connection := Conn}) ->
     case erlang:function_exported(ConnectModule, ensure_unsubscribed, 2) of
         true -> ConnectModule:ensure_unsubscribed(Conn, Topic);
-        false -> {error, no_remote_subscription_support}
+        false -> {{error, no_remote_subscription_support}, Topic}
     end.
 
 collect(Acc) ->
@@ -610,7 +610,12 @@ validate(RawTopic) ->
 do_subscribe(RawTopic) ->
     TopicFilter = validate(RawTopic),
     {Topic, SubOpts} = emqx_topic:parse(TopicFilter, #{qos => ?QOS_1}),
-    emqx_broker:subscribe(Topic, name(), SubOpts).
+    {emqx_broker:subscribe(Topic, name(), SubOpts), Topic}.
+
+do_unsubscribe(RawTopic) ->
+    TopicFilter = validate(RawTopic),
+    {Topic, _SubOpts} = emqx_topic:parse(TopicFilter),
+    {emqx_broker:unsubscribe(Topic), Topic}.
 
 disconnect(#{connection := Conn,
              conn_ref := ConnRef,
