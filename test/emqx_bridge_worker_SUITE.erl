@@ -89,13 +89,6 @@ t_mngr(Config) when is_list(Config) ->
 
 %% A loopback RPC to local node
 t_rpc(Config) when is_list(Config) ->
-    %% dbg:start(),
-    %% dbg:tracer(),
-    %% dbg:p(all, c),
-    %% dbg:tpl(emqx_bridge_rpc, send, x),
-    %% dbg:tpl(emqx_broker, publish, x),
-    %% dbg:tpl(emqx_bridge_worker, subscribe_local_topic, x),
-    %% dbg:tpl(emqx_bridge_worker, common, x),
     Cfg = #{address => node(),
             forwards => [<<"t_rpc/#">>],
             connect_module => emqx_bridge_rpc,
@@ -166,7 +159,6 @@ t_mqtt(Config) when is_list(Config) ->
                       {ForwardedTopic2, 1}], emqx_bridge_worker:get_subscriptions(Pid)),
         {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
         {ok, _Props} = emqtt:connect(ConnPid),
-        %% {ok, SPid} = emqx_mock_client:open_session(ConnPid, ClientId, internal),
         %% message from a different client, to avoid getting terminated by no-local
         Max = 100,
         Msgs = lists:seq(1, Max),
