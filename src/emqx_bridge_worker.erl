@@ -125,6 +125,7 @@
 -define(DEFAULT_SEND_AHEAD, 8).
 -define(DEFAULT_RECONNECT_DELAY_MS, timer:seconds(5)).
 -define(DEFAULT_SEG_BYTES, (1 bsl 20)).
+-define(DEFAULT_MAX_TOTAL_SIZE, (1 bsl 31)).
 -define(NO_BRIDGE_HANDLER, undefined).
 -define(NO_FROM, undefined).
 -define(maybe_send, {next_event, internal, maybe_send}).
@@ -268,13 +269,15 @@ init(Config) ->
     GetQ = fun(K, D) -> maps:get(K, QCfg, D) end,
     Dir = GetQ(replayq_dir, undefined),
     SegBytes = GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES),
+    MaxTotalSize = GetQ(max_total_size, ?DEFAULT_MAX_TOTAL_SIZE),
     QueueConfig =
         case GetQ(replayq_dir, undefined) of
             Dir when Dir =:= undefined;
                      Dir =:= "" ->
                 #{mem_only => true};
             Dir -> #{dir => Dir,
-                     seg_bytes => SegBytes}
+                     seg_bytes => SegBytes,
+                     max_total_size => MaxTotalSize}
         end,
     Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),
@@ -433,7 +436,7 @@ common(_StateName, {call, From}, {ensure_absent, What, Topic}, State) ->
 common(_StateName, {call, From}, ensure_stopped, _State) ->
     {stop_and_reply, {shutdown, manual},
      [{reply, From, ok}]};
-common(_StateName, info, {deliver, _,  Msg},
+common(_StateName, info, {deliver, _, Msg},
        #{replayq := Q} = State) ->
     NewQ = replayq:append(Q, collect([Msg])),
     {keep_state, State#{replayq => NewQ}, ?maybe_send};
