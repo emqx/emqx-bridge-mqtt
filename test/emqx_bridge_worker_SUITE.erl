@@ -28,9 +28,25 @@
 
 -define(wait(For, Timeout), emqx_ct_helpers:wait_for(?FUNCTION_NAME, ?LINE, fun() -> For end, Timeout)).
 
+receive_messages(Count) ->
+    receive_messages(Count, []).
+
+receive_messages(0, Msgs) ->
+    Msgs;
+receive_messages(Count, Msgs) ->
+    receive
+        {publish, Msg} ->
+            receive_messages(Count-1, [Msg|Msgs]);
+        _Other ->
+            receive_messages(Count, Msgs)
+    after 100 ->
+        Msgs
+    end.
+
 all() -> [ t_rpc
          , t_mqtt
-         , t_mngr].
+         , t_mngr
+         ].
 
 init_per_suite(Config) ->
     case node() of
@@ -81,29 +97,22 @@ t_rpc(Config) when is_list(Config) ->
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
     ClientId = <<"ClientId">>,
     try
-        {ok, ConnPid} = emqx_mock_client:start_link(ClientId),
-        {ok, SPid} = emqx_mock_client:open_session(ConnPid, ClientId, internal),
-        %% message from a different client, to avoid getting terminated by no-local
-        Msg1 = emqx_message:make(<<"ClientId-2">>, ?QOS_2, <<"t_rpc/one">>, <<"hello">>),
-        ok = emqx_session:subscribe(SPid, [{<<"forwarded/t_rpc/one">>, #{qos => ?QOS_1}}]),
-        ct:sleep(100),
-        PacketId = 1,
-        emqx_session:publish(SPid, PacketId, Msg1),
-        ?wait(case emqx_mock_client:get_last_message(ConnPid) of
-                  [{publish, PacketId, #message{topic = <<"forwarded/t_rpc/one">>}}] ->
-                      true;
-                  Other ->
-                      Other
-              end, 4000),
-        emqx_mock_client:close_session(ConnPid)
+        {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
+        {ok, _Props} = emqtt:connect(ConnPid),
+        {ok, _Props, [1]} = emqtt:subscribe(ConnPid, {<<"forwarded/t_rpc/one">>, ?QOS_1}),
+        timer:sleep(100),
+        {ok, _PacketId} = emqtt:publish(ConnPid, <<"t_rpc/one">>, <<"hello">>, ?QOS_1),
+        timer:sleep(100),
+        ?assertEqual(1, length(receive_messages(1))),
+        emqtt:disconnect(ConnPid)
     after
         ok = emqx_bridge_worker:stop(Pid)
     end.
 
 %% Full data loopback flow explained:
-%% test-pid --->  mock-cleint ----> local-broker ---(local-subscription)--->
+%% mqtt-client ----> local-broker ---(local-subscription)--->
 %% bridge(export) --- (mqtt-connection)--> local-broker ---(remote-subscription) -->
-%% bridge(import) --(mecked message sending)--> test-pid
+%% bridge(import) --> mqtt-client
 t_mqtt(Config) when is_list(Config) ->
     SendToTopic = <<"t_mqtt/one">>,
     SendToTopic2 = <<"t_mqtt/two">>,
@@ -137,7 +146,7 @@ t_mqtt(Config) when is_list(Config) ->
     meck:new(emqx_bridge_worker, [passthrough, no_history]),
     meck:expect(emqx_bridge_worker, import_batch, 3,
                 fun(Batch, AckFun, _IfRecordMetrics) ->
-                        Tester ! {Ref, Batch},
+                        Tester ! {publish, {Ref, Batch}},
                         AckFun()
                 end),
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
@@ -148,48 +157,17 @@ t_mqtt(Config) when is_list(Config) ->
         ok = emqx_bridge_worker:ensure_forward_present(Pid, SendToTopic2),
         ?assertEqual([{ForwardedTopic, 1},
                       {ForwardedTopic2, 1}], emqx_bridge_worker:get_subscriptions(Pid)),
-        {ok, ConnPid} = emqx_mock_client:start_link(ClientId),
-        {ok, SPid} = emqx_mock_client:open_session(ConnPid, ClientId, internal),
+        {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
+        {ok, _Props} = emqtt:connect(ConnPid),
         %% message from a different client, to avoid getting terminated by no-local
         Max = 100,
         Msgs = lists:seq(1, Max),
         lists:foreach(fun(I) ->
-                          Msg = emqx_message:make(<<"client-2">>, ?QOS_1, SendToTopic, integer_to_binary(I)),
-                          emqx_session:publish(SPid, I, Msg)
+                          {ok, _PacketId} = emqtt:publish(ConnPid, SendToTopic, integer_to_binary(I), ?QOS_1)
                       end, Msgs),
-        ok = receive_and_match_messages(Ref, Msgs),
-        Msgs2 = lists:seq(Max + 1, Max * 2),
-        lists:foreach(fun(I) ->
-                          Msg = emqx_message:make(<<"client-2">>, ?QOS_1, SendToTopic2, integer_to_binary(I)),
-                          emqx_session:publish(SPid, I, Msg)
-                      end, Msgs2),
-        ok = receive_and_match_messages(Ref, Msgs2),
-        emqx_mock_client:close_session(ConnPid)
+        ?assertEqual(100, length(receive_messages(200))),
+        emqtt:disconnect(ConnPid)
     after
         ok = emqx_bridge_worker:stop(Pid),
         meck:unload(emqx_bridge_worker)
-    end.
-
-receive_and_match_messages(Ref, Msgs) ->
-    TRef = erlang:send_after(timer:seconds(5), self(), {Ref, timeout}),
-    try
-        do_receive_and_match_messages(Ref, Msgs)
-    after
-        erlang:cancel_timer(TRef)
-    end,
-    ok.
-
-do_receive_and_match_messages(_Ref, []) -> ok;
-do_receive_and_match_messages(Ref, [I | Rest] = Exp) ->
-    receive
-        {Ref, timeout} -> erlang:error(timeout);
-        {Ref, [#{payload := P} = Msg]} ->
-            case binary_to_integer(P) of
-                I ->  %% exact match
-                    do_receive_and_match_messages(Ref, Rest);
-                J when J < I -> %% allow retry
-                    do_receive_and_match_messages(Ref, Exp);
-                _Other ->
-                    throw({unexpected, Msg, Exp})
-            end
     end.

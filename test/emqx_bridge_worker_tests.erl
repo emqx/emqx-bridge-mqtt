@@ -124,7 +124,7 @@ manual_start_stop_test() ->
 sender_loop(_Pid, [], _) -> exit(normal);
 sender_loop(Pid, [Num | Rest], Interval) ->
     random_sleep(Interval),
-    Pid ! {dispatch, dummy, make_msg(Num)},
+    Pid ! {deliver, dummy, make_msg(Num)},
     sender_loop(Pid, Rest, Interval).
 
 %% Feed acknowledgments to bridge
