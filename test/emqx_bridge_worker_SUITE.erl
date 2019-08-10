@@ -53,6 +53,7 @@ init_per_suite(Config) ->
         nonode@nohost -> net_kernel:start(['emqx@127.0.0.1', longnames]);
         _ -> ok
     end,
+    ok = application:set_env(gen_rpc, tcp_client_num, 1),
     emqx_ct_helpers:start_apps([emqx_bridge_mqtt]),
     emqx_logger:set_log_level(error),
     [{log_level, error} | Config].
