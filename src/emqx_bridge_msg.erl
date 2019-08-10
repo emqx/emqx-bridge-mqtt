@@ -24,8 +24,10 @@
 -export_type([msg/0]).
 
 -include_lib("emqx/include/emqx.hrl").
--include_lib("emqx/include/emqx_mqtt.hrl").
--include_lib("emqx/include/emqx_client.hrl").
+
+-include_lib("emqx_bridge_mqtt/include/emqx_bridge_mqtt.hrl").
+-include_lib("emqtt/include/emqtt.hrl").
+
 
 -type msg() :: emqx_types:message().
 -type exp_msg() :: emqx_types:message() | #mqtt_msg{}.
@@ -68,7 +70,7 @@ estimate_size(#message{topic = Topic, payload = Payload}) ->
     size(Topic) + size(Payload).
 
 %% @doc By message/batch receiver, transform received batch into
-%% messages to dispatch to local brokers.
+%% messages to deliver to local brokers.
 to_broker_msgs(Batch) -> lists:map(fun to_broker_msg/1, Batch).
 
 to_broker_msg(#message{} = Msg) ->
