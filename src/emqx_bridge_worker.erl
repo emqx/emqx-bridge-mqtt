@@ -119,12 +119,13 @@
 
 -logger_header("[Bridge]").
 
-%% same as default in-flight limit for emqx_client
+%% same as default in-flight limit for emqtt
 -define(DEFAULT_BATCH_COUNT, 32).
 -define(DEFAULT_BATCH_BYTES, 1 bsl 20).
 -define(DEFAULT_SEND_AHEAD, 8).
 -define(DEFAULT_RECONNECT_DELAY_MS, timer:seconds(5)).
 -define(DEFAULT_SEG_BYTES, (1 bsl 20)).
+-define(DEFAULT_MAX_TOTAL_SIZE, (1 bsl 31)).
 -define(NO_BRIDGE_HANDLER, undefined).
 -define(NO_FROM, undefined).
 -define(maybe_send, {next_event, internal, maybe_send}).
@@ -268,13 +269,15 @@ init(Config) ->
     GetQ = fun(K, D) -> maps:get(K, QCfg, D) end,
     Dir = GetQ(replayq_dir, undefined),
     SegBytes = GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES),
+    MaxTotalSize = GetQ(max_total_size, ?DEFAULT_MAX_TOTAL_SIZE),
     QueueConfig =
         case GetQ(replayq_dir, undefined) of
             Dir when Dir =:= undefined;
                      Dir =:= "" ->
                 #{mem_only => true};
             Dir -> #{dir => Dir,
-                     seg_bytes => SegBytes}
+                     seg_bytes => SegBytes,
+                     max_total_size => MaxTotalSize}
         end,
     Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                                       marshaller => fun msg_marshaller/1}),
@@ -433,7 +436,7 @@ common(_StateName, {call, From}, {ensure_absent, What, Topic}, State) ->
 common(_StateName, {call, From}, ensure_stopped, _State) ->
     {stop_and_reply, {shutdown, manual},
      [{reply, From, ok}]};
-common(_StateName, info, {dispatch, _, Msg},
+common(_StateName, info, {deliver, _, Msg},
        #{replayq := Q} = State) ->
     NewQ = replayq:append(Q, collect([Msg])),
     {keep_state, State#{replayq => NewQ}, ?maybe_send};
@@ -454,16 +457,16 @@ ensure_present(Key, Topic, State) ->
         true ->
             {ok, State};
         false ->
-            R = do_ensure_present(Key, Topic, State),
-            {R, State#{Key := lists:usort([Topic | Topics])}}
+            {R, Topic1} = do_ensure_present(Key, Topic, State),
+            {R, State#{Key := lists:usort([Topic1 | Topics])}}
     end.
 
 ensure_absent(Key, Topic, State) ->
     Topics = maps:get(Key, State),
     case is_topic_present(Topic, Topics) of
         true ->
-            R = do_ensure_absent(Key, Topic, State),
-            {R, State#{Key := ensure_topic_absent(Topic, Topics)}};
+            {R, Topic1} = do_ensure_absent(Key, Topic, State),
+            {R, State#{Key := ensure_topic_absent(Topic1, Topics)}};
         false ->
             {ok, State}
     end.
@@ -503,22 +506,22 @@ do_connect(Type, StateName, #{ forwards := Forwards
     end.
 
 do_ensure_present(forwards, Topic, _) ->
-    ok = subscribe_local_topic(Topic);
-do_ensure_present(subscriptions, _Topic, #{connect_module := _ConnectModule,
+    subscribe_local_topic(Topic);
+do_ensure_present(subscriptions, Topic, #{connect_module := _ConnectModule,
                                            connection := undefined}) ->
-    {error, no_connection};
+    {{error, no_connection}, Topic};
 do_ensure_present(subscriptions, {Topic, QoS},
                   #{connect_module := ConnectModule, connection := Conn}) ->
     case erlang:function_exported(ConnectModule, ensure_subscribed, 3) of
         true ->
             _ = ConnectModule:ensure_subscribed(Conn, Topic, QoS),
-            ok;
+            {ok, {Topic, QoS}};
         false ->
-            {error, no_remote_subscription_support}
+            {{error, no_remote_subscription_support}, {Topic, QoS}}
     end.
 
 do_ensure_absent(forwards, Topic, _) ->
-    ok = emqx_broker:unsubscribe(Topic);
+    do_unsubscribe(Topic);
 do_ensure_absent(subscriptions, _Topic, #{connect_module := _ConnectModule,
                                           connection := undefined}) ->
     {error, no_connection};
@@ -526,12 +529,12 @@ do_ensure_absent(subscriptions, Topic, #{connect_module := ConnectModule,
                                          connection := Conn}) ->
     case erlang:function_exported(ConnectModule, ensure_unsubscribed, 2) of
         true -> ConnectModule:ensure_unsubscribed(Conn, Topic);
-        false -> {error, no_remote_subscription_support}
+        false -> {{error, no_remote_subscription_support}, Topic}
     end.
 
 collect(Acc) ->
     receive
-        {dispatch, _, Msg} ->
+        {deliver, _, Msg} ->
             collect([Msg | Acc])
     after
         0 ->
@@ -593,17 +596,29 @@ do_ack(#{inflight := Inflight}, Ref) ->
 
 subscribe_local_topics(Topics) -> lists:foreach(fun subscribe_local_topic/1, Topics).
 
-subscribe_local_topic(Topic0) ->
-    Topic = topic(Topic0),
-    try
-        emqx_topic:validate({filter, Topic})
-    catch
-        error : Reason ->
-            erlang:error({bad_topic, Topic, Reason})
-    end,
-    ok = emqx_broker:subscribe(Topic, #{qos => ?QOS_1, subid => name()}).
+subscribe_local_topic(Topic) ->
+    do_subscribe(Topic).
 
 topic(T) -> iolist_to_binary(T).
+
+validate(RawTopic) ->
+    Topic = topic(RawTopic),
+    try emqx_topic:validate(Topic) of
+        _Success -> Topic
+    catch
+        error:Reason ->
+            error({bad_topic, Topic, Reason})
+    end.
+
+do_subscribe(RawTopic) ->
+    TopicFilter = validate(RawTopic),
+    {Topic, SubOpts} = emqx_topic:parse(TopicFilter, #{qos => ?QOS_1}),
+    {emqx_broker:subscribe(Topic, name(), SubOpts), Topic}.
+
+do_unsubscribe(RawTopic) ->
+    TopicFilter = validate(RawTopic),
+    {Topic, _SubOpts} = emqx_topic:parse(TopicFilter),
+    {emqx_broker:unsubscribe(Topic), Topic}.
 
 disconnect(#{connection := Conn,
              conn_ref := ConnRef,

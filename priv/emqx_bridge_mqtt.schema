@@ -119,6 +119,10 @@
   {datatype, bytesize}
 ]}.
 
+{mapping, "bridge.mqtt.$name.queue.max_total_size", "emqx_bridge_mqtt.bridges", [
+  {datatype, bytesize}
+]}.
+
 {translation, "emqx_bridge_mqtt.bridges", fun(Conf) ->
 
     MapPSKCiphers = fun(PSKCiphers) ->
@@ -223,7 +227,6 @@
             Tr(Key, Value, Cfg) ->
                 Cfg#{Key => Value}
          end,
-
     C = lists:foldl(
         fun({["bridge", "mqtt", Name, Opt], Val}, Acc) ->
                 %% e.g #{aws => [{OptKey, OptVal}]}
