@@ -167,8 +167,11 @@ match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId]) | Sent]) -
     match_acks(Parent, Acked, Sent);
 match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId | RestIds]) | Sent]) ->
     %% one message finished, but not the whole batch
-    match_acks(Parent, Acked, [?REF_IDS(Ref, RestIds) | Sent]).
-
+    match_acks(Parent, Acked, [?REF_IDS(Ref, RestIds) | Sent]);
+match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, PktIds) | Sent]) ->
+    %% one message finished in the case that the order of acked messages
+    %% is not consistent with the sent messages.
+    match_acks(Parent, Acked, [?REF_IDS(Ref, lists:delete(PktId, PktIds)) | Sent]).
 
 %% When puback for QoS-1 message is received from remote MQTT broker
 %% NOTE: no support for QoS-2
