@@ -18,3 +18,4 @@ emqx_bridge_mqtt.d
 *.coverdata
 rebar.lock
 .DS_Store
+Mnesia.*/

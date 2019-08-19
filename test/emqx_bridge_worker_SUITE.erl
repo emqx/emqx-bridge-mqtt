@@ -157,7 +157,8 @@ t_mqtt(Config) when is_list(Config) ->
         ok = emqx_bridge_worker:ensure_subscription_present(Pid, ForwardedTopic2, _QoS = 1),
         ok = emqx_bridge_worker:ensure_forward_present(Pid, SendToTopic2),
         ?assertEqual([{ForwardedTopic, 1},
-                      {ForwardedTopic2, 1}], emqx_bridge_worker:get_subscriptions(Pid)),
+                      {ForwardedTopic2, 1}],
+                     emqx_bridge_worker:get_subscriptions(Pid)),
         {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
         {ok, _Props} = emqtt:connect(ConnPid),
         %% message from a different client, to avoid getting terminated by no-local
