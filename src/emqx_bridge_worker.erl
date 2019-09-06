@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %% @doc Bridge works in two layers (1) batching layer (2) transport layer
 %% The `bridge' batching layer collects local messages in batches and sends over
@@ -656,12 +658,11 @@ format_mountpoint(undefined) ->
 format_mountpoint(Prefix) ->
     binary:replace(iolist_to_binary(Prefix), <<"${node}">>, atom_to_binary(node(), utf8)).
 
-name() -> case process_info(self(), registered_name) of
-              {_, Name} ->
-                  Name;
-              _ ->
-                  undefined
-          end.
+name() ->
+    case process_info(self(), registered_name) of
+        {_, Name} -> Name;
+        _ -> undefined
+    end.
 
 name(Id) -> list_to_atom(lists:concat([?MODULE, "_", Id])).
 
@@ -669,5 +670,8 @@ id(Pid) when is_pid(Pid) -> Pid;
 id(Name) -> name(Name).
 
 register_metrics() ->
-    [emqx_metrics:new(MetricName) || MetricName <- ['bridge.mqtt.message_sent',
-                                                    'bridge.mqtt.message_received']].
+    lists:foreach(fun emqx_metrics:new/1,
+                  ['bridge.mqtt.message_sent',
+                   'bridge.mqtt.message_received'
+                  ]).
+

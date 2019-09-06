@@ -1,4 +1,5 @@
-%% Copyright (c) 2013-2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%--------------------------------------------------------------------
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(emqx_bridge_mqtt_cli).
 
@@ -26,11 +28,11 @@ cli(["list"]) ->
                             connected -> <<"Running">>;
                             _ -> <<"Stopped">>
                         end,
-                emqx_cli:print("name: ~s     status: ~s~n", [Name, State])
+                emqx_mgmt:print("name: ~s     status: ~s~n", [Name, State])
             end, emqx_bridge_mqtt_sup:bridges());
 
 cli(["start", Name]) ->
-    emqx_cli:print("~s.~n", [try emqx_bridge_worker:ensure_started(Name) of
+    emqx_mgmt:print("~s.~n", [try emqx_bridge_worker:ensure_started(Name) of
                                  ok -> <<"Start bridge successfully">>;
                                  connected -> <<"Bridge already started">>;
                                  _ -> <<"Start bridge failed">>
@@ -40,7 +42,7 @@ cli(["start", Name]) ->
                              end]);
 
 cli(["stop", Name]) ->
-    emqx_cli:print("~s.~n", [try emqx_bridge_worker:ensure_stopped(Name) of
+    emqx_mgmt:print("~s.~n", [try emqx_bridge_worker:ensure_stopped(Name) of
                                  ok -> <<"Stop bridge successfully">>;
                                  _ -> <<"Stop bridge failed">>
                              catch
@@ -50,47 +52,47 @@ cli(["stop", Name]) ->
 
 cli(["forwards", Name]) ->
     foreach(fun(Topic) ->
-                emqx_cli:print("topic:   ~s~n", [Topic])
+                emqx_mgmt:print("topic:   ~s~n", [Topic])
             end, emqx_bridge_worker:get_forwards(Name));
 
 cli(["add-forward", Name, Topic]) ->
     case emqx_bridge_worker:ensure_forward_present(Name, iolist_to_binary(Topic)) of
-        ok -> emqx_cli:print("Add-forward topic successfully.~n");
-        {error, Reason} -> emqx_cli:print("Add-forward failed reason: ~p.~n", [Reason])
+        ok -> emqx_mgmt:print("Add-forward topic successfully.~n");
+        {error, Reason} -> emqx_mgmt:print("Add-forward failed reason: ~p.~n", [Reason])
     end;
 
 cli(["del-forward", Name, Topic]) ->
     case emqx_bridge_worker:ensure_forward_absent(Name, iolist_to_binary(Topic)) of
-        ok -> emqx_cli:print("Del-forward topic successfully.~n");
-        {error, Reason} -> emqx_cli:print("Del-forward failed reason: ~p.~n", [Reason])
+        ok -> emqx_mgmt:print("Del-forward topic successfully.~n");
+        {error, Reason} -> emqx_mgmt:print("Del-forward failed reason: ~p.~n", [Reason])
     end;
 
 cli(["subscriptions", Name]) ->
     foreach(fun({Topic, Qos}) ->
-                emqx_cli:print("topic: ~s, qos: ~p~n", [Topic, Qos])
+                emqx_mgmt:print("topic: ~s, qos: ~p~n", [Topic, Qos])
             end, emqx_bridge_worker:get_subscriptions(Name));
 
 cli(["add-subscription", Name, Topic, Qos]) ->
     case emqx_bridge_worker:ensure_subscription_present(Name, Topic, list_to_integer(Qos)) of
-        ok -> emqx_cli:print("Add-subscription topic successfully.~n");
-        {error, Reason} -> emqx_cli:print("Add-subscription failed reason: ~p.~n", [Reason])
+        ok -> emqx_mgmt:print("Add-subscription topic successfully.~n");
+        {error, Reason} -> emqx_mgmt:print("Add-subscription failed reason: ~p.~n", [Reason])
     end;
 
 cli(["del-subscription", Name, Topic]) ->
     case emqx_bridge_worker:ensure_subscription_absent(Name, Topic) of
-        ok -> emqx_cli:print("Del-subscription topic successfully.~n");
-        {error, Reason} -> emqx_cli:print("Del-subscription failed reason: ~p.~n", [Reason])
+        ok -> emqx_mgmt:print("Del-subscription topic successfully.~n");
+        {error, Reason} -> emqx_mgmt:print("Del-subscription failed reason: ~p.~n", [Reason])
     end;
 
 cli(_) ->
-    emqx_cli:usage([{"bridges list",           "List bridges"},
-                    {"bridges start <Name>",   "Start a bridge"},
-                    {"bridges stop <Name>",    "Stop a bridge"},
-                    {"bridges forwards <Name>", "Show a bridge forward topic"},
-                    {"bridges add-forward <Name> <Topic>", "Add bridge forward topic"},
-                    {"bridges del-forward <Name> <Topic>", "Delete bridge forward topic"},
-                    {"bridges subscriptions <Name>", "Show a bridge subscriptions topic"},
-                    {"bridges add-subscription <Name> <Topic> <Qos>", "Add bridge subscriptions topic"},
-                    {"bridges del-subscription <Name> <Topic>", "Delete bridge subscriptions topic"}]).
+    emqx_mgmt:usage([{"bridges list",           "List bridges"},
+                     {"bridges start <Name>",   "Start a bridge"},
+                     {"bridges stop <Name>",    "Stop a bridge"},
+                     {"bridges forwards <Name>", "Show a bridge forward topic"},
+                     {"bridges add-forward <Name> <Topic>", "Add bridge forward topic"},
+                     {"bridges del-forward <Name> <Topic>", "Delete bridge forward topic"},
+                     {"bridges subscriptions <Name>", "Show a bridge subscriptions topic"},
+                     {"bridges add-subscription <Name> <Topic> <Qos>", "Add bridge subscriptions topic"},
+                     {"bridges del-subscription <Name> <Topic>", "Delete bridge subscriptions topic"}]).
 
 
