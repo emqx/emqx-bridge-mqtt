@@ -14,7 +14,7 @@
   {datatype, {enum, [true, false]}}
 ]}.
 
-{mapping, "bridge.mqtt.$name.client_id", "emqx_bridge_mqtt.bridges", [
+{mapping, "bridge.mqtt.$name.clientid", "emqx_bridge_mqtt.bridges", [
   {datatype, string}
 ]}.
 
