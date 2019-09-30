@@ -74,7 +74,7 @@
                              zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
                                      "盘队列上"/utf8>>}
         },
-        client_id => #{
+        clientid => #{
             order => 4,
             type => string,
             required => false,
@@ -453,7 +453,7 @@ options(Options, PoolName) ->
                  [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
-                  {client_id, str(Get(<<"client_id">>))},
+                  {clientid, str(Get(<<"clientid">>))},
                   {connect_module, emqx_bridge_mqtt},
                   {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
                   {username, str(Get(<<"username">>))},

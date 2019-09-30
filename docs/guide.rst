@@ -108,8 +108,8 @@ EMQ X MQTT bridging principle: Create an MQTT client on the EMQ X broker, and co
    ## Enumeration value: mqttv3 | mqttv4 | mqttv5
    bridge.mqtt.emqx2.proto_ver = mqttv4
 
-   ## mqtt client's client_id
-   bridge.mqtt.emqx2.client_id = bridge_emq
+   ## mqtt client's clientid
+   bridge.mqtt.emqx2.clientid = bridge_emq
 
    ## mqtt client's clean_start field
    ## Note: Some MQTT Brokers need to set the clean_start value as `true`
