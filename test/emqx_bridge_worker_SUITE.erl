@@ -100,7 +100,7 @@ t_rpc(Config) when is_list(Config) ->
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
     ClientId = <<"ClientId">>,
     try
-        {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
+        {ok, ConnPid} = emqtt:start_link([{clientid, ClientId}]),
         {ok, _Props} = emqtt:connect(ConnPid),
         {ok, _Props, [1]} = emqtt:subscribe(ConnPid, {<<"forwarded/t_rpc/one">>, ?QOS_1}),
         timer:sleep(100),
@@ -128,7 +128,7 @@ t_mqtt(Config) when is_list(Config) ->
             mountpoint => Mountpoint,
             username => "user",
             clean_start => true,
-            client_id => "bridge_aws",
+            clientid => "bridge_aws",
             keepalive => 60000,
             max_inflight => 32,
             password => "passwd",
@@ -161,7 +161,7 @@ t_mqtt(Config) when is_list(Config) ->
         ?assertEqual([{ForwardedTopic, 1},
                       {ForwardedTopic2, 1}],
                      emqx_bridge_worker:get_subscriptions(Pid)),
-        {ok, ConnPid} = emqtt:start_link([{client_id, ClientId}]),
+        {ok, ConnPid} = emqtt:start_link([{clientid, ClientId}]),
         {ok, _Props} = emqtt:connect(ConnPid),
         %% message from a different client, to avoid getting terminated by no-local
         Max = 100,
