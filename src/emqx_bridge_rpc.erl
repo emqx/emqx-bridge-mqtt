@@ -28,7 +28,6 @@
 
 %% Internal exports
 -export([ handle_send/2
-        , handle_ack/2
         , heartbeat/2
         ]).
 
@@ -75,15 +74,8 @@ send(Remote, Batch, _IfRecordMetric) ->
 -spec handle_send(batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
 handle_send(Batch, IfRecordMetric) ->
     Ref = make_ref(),
-    AckFun = fun() -> ok end,
-    case emqx_bridge_worker:import_batch(Batch, AckFun, IfRecordMetric) of
-        ok -> {ok, Ref};
-        Error -> Error
-    end.
-
-%% @doc Handle batch ack in sender node.
-handle_ack(SenderPid, Ref) ->
-    ok = emqx_bridge_worker:handle_ack(SenderPid, Ref).
+    emqx_bridge_worker:import_batch(Batch, IfRecordMetric),
+    {ok, Ref}.
 
 %% @hidden Heartbeat loop
 heartbeat(Parent, RemoteNode) ->

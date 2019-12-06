@@ -147,10 +147,9 @@ t_mqtt(Config) when is_list(Config) ->
     Tester = self(),
     Ref = make_ref(),
     meck:new(emqx_bridge_worker, [passthrough, no_history]),
-    meck:expect(emqx_bridge_worker, import_batch, 3,
-                fun(Batch, AckFun, _IfRecordMetrics) ->
-                        Tester ! {publish, {Ref, Batch}},
-                        AckFun()
+    meck:expect(emqx_bridge_worker, import_batch, 2,
+                fun(Batch, _IfRecordMetrics) ->
+                        Tester ! {publish, {Ref, Batch}}
                 end),
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
     ClientId = <<"client-1">>,

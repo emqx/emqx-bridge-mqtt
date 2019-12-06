@@ -103,11 +103,11 @@
   {datatype, integer}
 ]}.
 
-{mapping, "bridge.mqtt.$name.queue.batch_count_limit", "emqx_bridge_mqtt.bridges", [
+{mapping, "bridge.mqtt.$name.batch_count_limit", "emqx_bridge_mqtt.bridges", [
   {datatype, integer}
 ]}.
 
-{mapping, "bridge.mqtt.$name.queue.batch_bytes_limit", "emqx_bridge_mqtt.bridges", [
+{mapping, "bridge.mqtt.$name.batch_bytes_limit", "emqx_bridge_mqtt.bridges", [
   {datatype, bytesize}
 ]}.
 
@@ -210,8 +210,6 @@
                            false -> Addr0
                        end,
                 Cfg#{address => Addr};
-            Tr(batch_size, Count, Cfg) ->
-                Cfg#{batch_count_limit => Count};
             Tr(reconnect_interval, Ms, Cfg) ->
                 Cfg#{reconnect_delay_ms => Ms};
             Tr(max_inflight, Count, Cfg) ->

@@ -129,7 +129,7 @@ send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Re
         {ok, PktId} when Rest =:= [] ->
             %% last one sent
             Ref = make_ref(),
-            AckCollector ! ?SENT(?REF_IDS(Ref, lists:reverse([PktId | Acc]))),
+            AckCollector ! {sent, {Ref, lists:reverse([PktId | Acc])}},
             {ok, Ref};
         {ok, PktId} ->
             send(Conn, Rest, [PktId | Acc], IfRecordMetrics);
@@ -185,7 +185,7 @@ handle_puback(AckCollector, #{packet_id := PktId, reason_code := RC}) ->
 %% Message published from remote broker. Import to local broker.
 import_msg(Msg, IfRecordMetrics) ->
     %% auto-ack should be enabled in emqtt, hence dummy ack-fun.
-    emqx_bridge_worker:import_batch([Msg], _AckFun = fun() -> ok end, IfRecordMetrics).
+    emqx_bridge_worker:import_batch([Msg], IfRecordMetrics).
 
 make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics) ->
     #{puback => fun(Ack) -> handle_puback(AckCollector, Ack) end,

@@ -65,7 +65,7 @@
 %% APIs
 -export([ start_link/1
         , start_link/2
-        , import_batch/3
+        , import_batch/2
         , register_metrics/0
         , handle_ack/2
         , stop/1
@@ -86,11 +86,8 @@
 
 %% management APIs
 -export([ ensure_started/1
-        , ensure_started/2
         , ensure_stopped/1
         , ensure_stopped/2
-        , ensure_connected/1
-        , ensure_disconnected/1
         , status/1
         ]).
 
@@ -161,25 +158,12 @@ start_link(Config) ->
 start_link(Name, Config) when is_list(Config) ->
     start_link(Name, maps:from_list(Config));
 start_link(Name, Config) ->
-    gen_statem:start_link({local, name(Name)}, ?MODULE, Config, []).
+    Name1 = name(Name),
+    gen_statem:start_link({local, Name1}, ?MODULE, Config#{name => Name1}, []).
 
 ensure_started(Name) ->
     gen_statem:call(name(Name), ensure_started).
 
-%% @doc Manually start bridge worker. State idempotency ensured.
-ensure_started(Name, Config) ->
-    case start_link(Name, Config) of
-        {ok, Pid} -> {ok, Pid};
-        {error, {already_started, Pid}} -> {ok, Pid}
-    end.
-
-%% @doc Make bridge worker is connected.
-ensure_connected(Name) ->
-    gen_statem:call(name(Name), ensure_connected).
-
-%% @doc Make bridge worker is disconnected.
-ensure_disconnected(Name) ->
-    gen_statem:call(name(Name), ensure_disconnected).
 
 %% @doc Manually stop bridge worker. State idempotency ensured.
 ensure_stopped(Id) ->
@@ -214,14 +198,13 @@ status(Id) ->
     gen_statem:call(name(Id), status).
 
 %% @doc This function is to be evaluated on message/batch receiver side.
--spec import_batch(batch(), fun(() -> ok), boolean()) -> ok.
-import_batch(Batch, AckFun, IfRecordMetric) ->
+-spec import_batch(batch(), boolean()) -> ok.
+import_batch(Batch, IfRecordMetric) ->
     PublishMsg = fun(Msg) ->
                      bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
                      emqx_broker:publish(Msg)
                  end,
-    lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)),
-    AckFun().
+    lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)).
 
 %% @doc This function is to be evaluated on message/batch exporter side
 %% when message/batch is accepted by remote node.
@@ -266,57 +249,75 @@ callback_mode() -> [state_functions, state_enter].
 %% @doc Config should be a map().
 init(Config) ->
     erlang:process_flag(trap_exit, true),
-    Get = fun(K, D) -> maps:get(K, Config, D) end,
-    QCfg = maps:get(queue, Config, #{}),
-    GetQ = fun(K, D) -> maps:get(K, QCfg, D) end,
-    Dir = GetQ(replayq_dir, undefined),
-    SegBytes = GetQ(replayq_seg_bytes, ?DEFAULT_SEG_BYTES),
-    MaxTotalSize = GetQ(max_total_size, ?DEFAULT_MAX_TOTAL_SIZE),
-    QueueConfig =
-        case GetQ(replayq_dir, undefined) of
-            Dir when Dir =:= undefined;
-                     Dir =:= "" ->
-                #{mem_only => true};
-            Dir -> #{dir => Dir,
-                     seg_bytes => SegBytes,
-                     max_total_size => MaxTotalSize}
-        end,
-    Queue = replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
-                                      marshaller => fun msg_marshaller/1}),
-    Topics = lists:sort([iolist_to_binary(T) || T <- Get(forwards, [])]),
-    Subs = lists:keysort(1, lists:map(fun({T0, QoS}) ->
-                                              T = iolist_to_binary(T0),
-                                              true = emqx_topic:validate({filter, T}),
-                                              {T, QoS}
-                                      end, Get(subscriptions, []))),
-    IfRecordMetrics = Get(if_record_metrics, true),
     ConnectModule = maps:get(connect_module, Config),
-    ConnectConfig = maps:without([connect_module,
-                                  queue,
-                                  reconnect_delay_ms,
-                                  max_inflight_batches,
-                                  mountpoint,
-                                  forwards
-                                 ], Config#{subscriptions => Subs,
-                                            if_record_metrics => IfRecordMetrics}),
-    ConnectFun = fun(SubsX) -> emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions := SubsX}) end,
-    {ok, standing_by,
-     #{connect_module => ConnectModule,
-       connect_fun => ConnectFun,
-       start_type => Get(start_type, manual),
-       reconnect_delay_ms => maps:get(reconnect_delay_ms, Config, ?DEFAULT_RECONNECT_DELAY_MS),
-       batch_bytes_limit => GetQ(batch_bytes_limit, ?DEFAULT_BATCH_BYTES),
-       batch_count_limit => GetQ(batch_count_limit, ?DEFAULT_BATCH_COUNT),
-       max_inflight_batches => Get(max_inflight_batches, ?DEFAULT_SEND_AHEAD),
-       mountpoint => format_mountpoint(Get(mountpoint, undefined)),
-       forwards => Topics,
-       subscriptions => Subs,
-       replayq => Queue,
-       inflight => [],
-       connection => undefined,
-       bridge_handler => Get(bridge_handler, ?NO_BRIDGE_HANDLER),
-       if_record_metrics => IfRecordMetrics
-      }}.
+    Subscriptions = maps:get(subscriptions, Config, []),
+    Forwards = maps:get(forwards, Config, []),
+    Queue = open_replayq(Config),
+    State = init_opts(Config),
+    Topics = [iolist_to_binary(T) || T <- Forwards],
+    Subs = check_subscriptions(Subscriptions),
+    ConnectConfig = get_conn_cfg(Config),
+    ConnectFun = fun(SubsX, IfRecordMetrics) ->
+        emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions => SubsX,
+                                                                if_record_metrics => IfRecordMetrics})
+    end,
+    {ok, standing_by, State#{connect_module => ConnectModule,
+                             connect_fun => ConnectFun,
+                             forwards => Topics,
+                             subscriptions => Subs,
+                             replayq => Queue
+                            }}.
+
+init_opts(Config) ->
+    IfRecordMetrics = maps:get(if_record_metrics, Config, true),
+    ReconnDelayMs = maps:get(reconnect_delay_ms, Config, ?DEFAULT_RECONNECT_DELAY_MS),
+    MaxInflightBatches = maps:get(max_inflight_batches, Config, ?DEFAULT_SEND_AHEAD),
+    StartType = maps:get(start_type, Config, manual),
+    BridgeHandler = maps:get(bridge_handler, Config, ?NO_BRIDGE_HANDLER),
+    Mountpoint = maps:get(mountpoint, Config, undefined),
+    BatchBytesLimit = maps:get(batch_bytes_limit, Config, ?DEFAULT_BATCH_BYTES),
+    BatchCountLimit = maps:get(batch_count_limit, Config, ?DEFAULT_BATCH_COUNT),
+    Name = maps:get(name, Config, undefined),
+    #{start_type => StartType,
+      reconnect_delay_ms => ReconnDelayMs,
+      batch_bytes_limit => BatchBytesLimit,
+      batch_count_limit => BatchCountLimit,
+      max_inflight_batches => MaxInflightBatches,
+      mountpoint => format_mountpoint(Mountpoint),
+      inflight => [],
+      connection => undefined,
+      bridge_handler => BridgeHandler,
+      if_record_metrics => IfRecordMetrics,
+      name => Name}.
+
+open_replayq(Config) ->
+    QCfg = maps:get(queue, Config, #{}),
+    Dir = maps:get(replayq_dir, QCfg, undefined),
+    SegBytes = maps:get(replayq_seg_bytes, QCfg, ?DEFAULT_SEG_BYTES),
+    MaxTotalSize = maps:get(max_total_size, QCfg, ?DEFAULT_MAX_TOTAL_SIZE),
+    QueueConfig = case Dir =:= undefined orelse Dir =:= "" of
+        true -> #{mem_only => true};
+        false -> #{dir => Dir, seg_bytes => SegBytes, max_total_size => MaxTotalSize}
+    end,
+    replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
+                              marshaller => fun msg_marshaller/1}).
+
+check_subscriptions(Subscriptions) ->
+    lists:map(fun({Topic, QoS}) ->
+        Topic1 = iolist_to_binary(Topic),
+        true = emqx_topic:validate({filter, Topic1}),
+        {Topic1, QoS}
+    end, Subscriptions).
+
+get_conn_cfg(Config) ->
+    maps:without([connect_module,
+                  queue,
+                  reconnect_delay_ms,
+                  max_inflight_batches,
+                  mountpoint,
+                  forwards,
+                  name
+                 ], Config).
 
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
@@ -328,21 +329,16 @@ terminate(_Reason, _StateName, #{replayq := Q} = State) ->
 
 %% @doc Standing by for manual start.
 standing_by(enter, _, #{start_type := auto}) ->
-    Action = {state_timeout, 0, do_connect},
-    {keep_state_and_data, Action};
+    {keep_state_and_data, {state_timeout, 0, do_connect}};
 standing_by(enter, _, #{start_type := manual}) ->
     keep_state_and_data;
 %% ensure_started will be deprecated in the future
 standing_by({call, From}, ensure_started, State) ->
     do_connect({call, From}, standing_by, State);
-standing_by({call, From}, ensure_connected, State) ->
-    do_connect({call, From}, standing_by, State);
-standing_by({call, From}, ensure_disconnected, _State) ->
-    {keep_state_and_data, [{reply, From, ok}]};
 standing_by(state_timeout, do_connect, State) ->
     {next_state, connecting, State};
-standing_by(info, Info, State) ->
-    ?LOG(info, "Bridge ~p discarded info event at state standing_by:\n~p", [name(), Info]),
+standing_by(info, Info, #{name := Name}= State) ->
+    ?LOG(info, "Bridge ~p discarded info event at state standing_by:\n~p", [Name, Info]),
     {keep_state_and_data, State};
 standing_by(Type, Content, State) ->
     common(standing_by, Type, Content, State).
@@ -351,12 +347,9 @@ standing_by(Type, Content, State) ->
 %% After each timeout, it re-enters this state and start a retry until
 %% successfuly connected to remote node/cluster.
 connecting(enter, connected, #{reconnect_delay_ms := Timeout}) ->
-    Action = {state_timeout, Timeout, reconnect},
-    {keep_state_and_data, Action};
+    {keep_state_and_data, {state_timeout, Timeout, reconnect}};
 connecting(enter, _, State) ->
     do_connect(enter, connecting, State);
-connecting({call, From}, ensure_disconnected, State) ->
-    {next_state, standing_by, State, [{reply, From, ok}]};
 connecting(state_timeout, connected, State) ->
     {next_state, connected, State};
 connecting(state_timeout, reconnect, _State) ->
@@ -379,11 +372,9 @@ connecting(Type, Content, State) ->
 connected(enter, _OldState, #{inflight := Inflight} = State) ->
     case retry_inflight(State#{inflight := []}, Inflight) of
         {ok, NewState} ->
-            Action = {state_timeout, 0, success},
-            {keep_state, NewState, Action};
+            {keep_state, NewState, {state_timeout, 0, success}};
         {error, NewState} ->
-            Action = {state_timeout, 0, failure},
-            {keep_state, disconnect(NewState), Action}
+            {keep_state, disconnect(NewState), {state_timeout, 0, failure}}
     end;
 connected(state_timeout, failure, State) ->
     {next_state, connecting, State};
@@ -397,22 +388,22 @@ connected(internal, maybe_send, State) ->
             {next_state, connecting, disconnect(NewState)}
     end;
 connected(info, {disconnected, ConnRef, Reason},
-          #{conn_ref := ConnRefCurrent} = State) ->
+          #{conn_ref := ConnRefCurrent, name := Name} = State) ->
     case ConnRefCurrent =:= ConnRef of
         true ->
-            ?LOG(info, "Bridge ~p diconnected~nreason=~p", [name(), Reason]),
+            ?LOG(info, "Bridge ~p diconnected~nreason=~p", [Name, Reason]),
             {next_state, connecting,
              State#{conn_ref => undefined, connection => undefined}};
         false ->
             keep_state_and_data
     end;
-connected(info, {batch_ack, Ref}, State) ->
+connected(info, {batch_ack, Ref}, #{name := Name} = State) ->
     case do_ack(State, Ref) of
         stale ->
             keep_state_and_data;
         bad_order ->
             %% try re-connect then re-send
-            ?LOG(error, "Bad order ack received by bridge ~p", [name()]),
+            ?LOG(error, "Bad order ack received by bridge ~p", [Name]),
             {next_state, connecting, disconnect(State)};
         {ok, NewState} ->
             {keep_state, NewState, ?maybe_send}
@@ -424,7 +415,7 @@ connected(Type, Content, State) ->
 common(StateName, {call, From}, status, _State) ->
     {keep_state_and_data, [{reply, From, StateName}]};
 common(_StateName, {call, From}, ensure_started, _State) ->
-    {keep_state_and_data, [{reply, From, ok}]};
+    {keep_state_and_data, [{reply, From, connected}]};
 common(_StateName, {call, From}, get_forwards, #{forwards := Forwards}) ->
     {keep_state_and_data, [{reply, From, Forwards}]};
 common(_StateName, {call, From}, get_subscriptions, #{subscriptions := Subs}) ->
@@ -442,9 +433,9 @@ common(_StateName, info, {deliver, _, Msg},
        #{replayq := Q} = State) ->
     NewQ = replayq:append(Q, collect([Msg])),
     {keep_state, State#{replayq => NewQ}, ?maybe_send};
-common(StateName, Type, Content, State) ->
+common(StateName, Type, Content, #{name := Name} = State) ->
     ?LOG(notice, "Bridge ~p discarded ~p type event at state ~p:\n~p",
-          [name(), Type, StateName, Content]),
+          [Name, Type, StateName, Content]),
     {keep_state, State}.
 
 eval_bridge_handler(State = #{bridge_handler := ?NO_BRIDGE_HANDLER}, _Msg) ->
@@ -459,16 +450,16 @@ ensure_present(Key, Topic, State) ->
         true ->
             {ok, State};
         false ->
-            {R, Topic1} = do_ensure_present(Key, Topic, State),
-            {R, State#{Key := lists:usort([Topic1 | Topics])}}
+            R = do_ensure_present(Key, Topic, State),
+            {R, State#{Key := lists:usort([Topic | Topics])}}
     end.
 
 ensure_absent(Key, Topic, State) ->
     Topics = maps:get(Key, State),
     case is_topic_present(Topic, Topics) of
         true ->
-            {R, Topic1} = do_ensure_absent(Key, Topic, State),
-            {R, State#{Key := ensure_topic_absent(Topic1, Topics)}};
+            R = do_ensure_absent(Key, Topic, State),
+            {R, State#{Key := ensure_topic_absent(Topic, Topics)}};
         false ->
             {ok, State}
     end.
@@ -482,57 +473,55 @@ is_topic_present({Topic, _QoS}, Topics) ->
 is_topic_present(Topic, Topics) ->
     lists:member(Topic, Topics) orelse false =/= lists:keyfind(Topic, 1, Topics).
 
-do_connect(Type, StateName, #{ forwards := Forwards
-                             , subscriptions := Subs
-                             , connect_fun := ConnectFun
-                             , reconnect_delay_ms := Timeout
-                             } = State) ->
-    ok = subscribe_local_topics(Forwards),
-    From = case StateName of
-               standing_by -> {call, Pid} = Type, Pid;
-               connecting -> ?NO_FROM
-           end,
-    case ConnectFun(Subs) of
-        {ok, ConnRef, Conn} ->
-            ?LOG(info, "Bridge ~p is connecting......", [name()]),
-            State1 = eval_bridge_handler(State#{conn_ref => ConnRef, connection => Conn}, connected),
-            case StateName of
-                standing_by -> {next_state, connected, State1, [{reply, From, ok}]};
-                connecting -> {keep_state, State1, {state_timeout, 0, connected}}
-            end;
+do_connect({call, Pid}, _StateName, State) ->
+    case do_connect(State) of
+        {ok, State1} ->
+            {next_state, connected, State1, [{reply, Pid, ok}]};
         {error, Reason} ->
-            {keep_state_and_data, case StateName of
-                                      standing_by -> [{reply, From, {error, Reason}}];
-                                      connecting -> {state_timeout, Timeout, reconnect}
-                                  end}
+            {keep_state_and_data, [{reply, Pid, {error, Reason}}]}
+    end;
+do_connect(_Type, connecting, State) ->
+    case do_connect(#{reconnect_delay_ms := Timeout} = State) of
+        {ok, State1} ->
+            {keep_state, State1, {state_timeout, 0, connected}};
+        {error, _Reason, _State1} ->
+            {keep_state_and_data, {state_timeout, Timeout, reconnect}}
     end.
 
-do_ensure_present(forwards, Topic, _) ->
-    subscribe_local_topic(Topic);
-do_ensure_present(subscriptions, Topic, #{connect_module := _ConnectModule,
-                                           connection := undefined}) ->
-    {{error, no_connection}, Topic};
-do_ensure_present(subscriptions, {Topic, QoS},
-                  #{connect_module := ConnectModule, connection := Conn}) ->
-    case erlang:function_exported(ConnectModule, ensure_subscribed, 3) of
-        true ->
-            _ = ConnectModule:ensure_subscribed(Conn, Topic, QoS),
-            {ok, {Topic, QoS}};
-        false ->
-            {{error, no_remote_subscription_support}, {Topic, QoS}}
+do_connect(#{ forwards := Forwards
+            , subscriptions := Subs
+            , connect_fun := ConnectFun
+            , if_record_metrics := IfRecordMetrics
+            , name := Name
+            } = State) ->
+    ok = subscribe_local_topics(Forwards, Name),
+    case ConnectFun(Subs, IfRecordMetrics) of
+        {ok, ConnRef, Conn} ->
+            ?LOG(info, "Bridge ~p is connecting......", [Name]),
+            {ok, eval_bridge_handler(State#{conn_ref => ConnRef, connection => Conn}, connected)};
+        {error, Reason} ->
+            {error, Reason, State}
     end.
+
+do_ensure_present(forwards, Topic, #{name := Name}) ->
+    subscribe_local_topic(Topic, Name);
+do_ensure_present(subscriptions, _Topic, #{connection := undefined}) ->
+    {error, no_connection};
+do_ensure_present(subscriptions, _Topic, #{connect_module := emqx_bridge_rpc}) ->
+    {error, no_remote_subscription_support};
+do_ensure_present(subscriptions, {Topic, QoS}, #{connect_module := ConnectModule,
+                                                 connection := Conn}) ->
+    ConnectModule:ensure_subscribed(Conn, Topic, QoS).
 
 do_ensure_absent(forwards, Topic, _) ->
     do_unsubscribe(Topic);
-do_ensure_absent(subscriptions, _Topic, #{connect_module := _ConnectModule,
-                                          connection := undefined}) ->
+do_ensure_absent(subscriptions, _Topic, #{connection := undefined}) ->
     {error, no_connection};
+do_ensure_absent(subscriptions, _Topic, #{connect_module := emqx_bridge_rpc}) ->
+    {error, no_remote_subscription_support};
 do_ensure_absent(subscriptions, Topic, #{connect_module := ConnectModule,
                                          connection := Conn}) ->
-    case erlang:function_exported(ConnectModule, ensure_unsubscribed, 2) of
-        true -> ConnectModule:ensure_unsubscribed(Conn, Topic);
-        false -> {{error, no_remote_subscription_support}, Topic}
-    end.
+    ConnectModule:ensure_unsubscribed(Conn, Topic).
 
 collect(Acc) ->
     receive
@@ -596,10 +585,11 @@ do_ack(#{inflight := Inflight}, Ref) ->
         false -> stale
     end.
 
-subscribe_local_topics(Topics) -> lists:foreach(fun subscribe_local_topic/1, Topics).
+subscribe_local_topics(Topics, Name) ->
+    lists:foreach(fun(Topic) -> subscribe_local_topic(Topic, Name) end, Topics).
 
-subscribe_local_topic(Topic) ->
-    do_subscribe(Topic).
+subscribe_local_topic(Topic, Name) ->
+    do_subscribe(Topic, Name).
 
 topic(T) -> iolist_to_binary(T).
 
@@ -612,15 +602,15 @@ validate(RawTopic) ->
             error({bad_topic, Topic, Reason})
     end.
 
-do_subscribe(RawTopic) ->
+do_subscribe(RawTopic, Name) ->
     TopicFilter = validate(RawTopic),
     {Topic, SubOpts} = emqx_topic:parse(TopicFilter, #{qos => ?QOS_1}),
-    {emqx_broker:subscribe(Topic, name(), SubOpts), Topic}.
+    emqx_broker:subscribe(Topic, Name, SubOpts).
 
 do_unsubscribe(RawTopic) ->
     TopicFilter = validate(RawTopic),
     {Topic, _SubOpts} = emqx_topic:parse(TopicFilter),
-    {emqx_broker:unsubscribe(Topic), Topic}.
+    emqx_broker:unsubscribe(Topic).
 
 disconnect(#{connection := Conn,
              conn_ref := ConnRef,
@@ -648,21 +638,10 @@ maybe_send(#{connect_module := Module,
                 end,
     Module:send(Connection, [ExportMsg(M) || M <- Batch], IfRecordMetrics).
 
-bridges_metrics_inc(true, Metric) ->
-    emqx_metrics:inc(Metric);
-bridges_metrics_inc(_IsRecordMetric, _Metric) ->
-    ok.
-
 format_mountpoint(undefined) ->
     undefined;
 format_mountpoint(Prefix) ->
     binary:replace(iolist_to_binary(Prefix), <<"${node}">>, atom_to_binary(node(), utf8)).
-
-name() ->
-    case process_info(self(), registered_name) of
-        {_, Name} -> Name;
-        _ -> undefined
-    end.
 
 name(Id) -> list_to_atom(lists:concat([?MODULE, "_", Id])).
 
@@ -675,3 +654,7 @@ register_metrics() ->
                    'bridge.mqtt.message_received'
                   ]).
 
+bridges_metrics_inc(true, Metric) ->
+    emqx_metrics:inc(Metric);
+bridges_metrics_inc(_IsRecordMetric, _Metric) ->
+    ok.
