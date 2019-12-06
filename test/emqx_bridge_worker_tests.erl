@@ -113,9 +113,9 @@ manual_start_stop_test() ->
     Ref = make_ref(),
     Config0 = make_config(Ref, self(), {ok, Ref, connection}),
     Config = Config0#{start_type := manual},
-    {ok, Pid} = emqx_bridge_worker:ensure_started(?BRIDGE_NAME, Config),
+    {ok, Pid} = emqx_bridge_worker:start_link(?BRIDGE_NAME, Config),
     %% call ensure_started again should yeld the same result
-    {ok, Pid} = emqx_bridge_worker:ensure_started(?BRIDGE_NAME, Config),
+    ok = emqx_bridge_worker:ensure_started(?BRIDGE_NAME),
     ?assertEqual(Pid, whereis(?BRIDGE_REG_NAME)),
     emqx_bridge_worker:ensure_stopped(unknown),
     emqx_bridge_worker:ensure_stopped(Pid),
