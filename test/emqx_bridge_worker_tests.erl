@@ -33,7 +33,7 @@
         end).
 
 %% stub callbacks
--export([start/1, send/3, stop/2]).
+-export([start/1, send/2, stop/1]).
 
 start(#{connect_result := Result, test_pid := Pid, test_ref := Ref}) ->
     case is_pid(Pid) of
@@ -42,10 +42,10 @@ start(#{connect_result := Result, test_pid := Pid, test_ref := Ref}) ->
     end,
     Result.
 
-send(SendFun, Batch, IfRecordMetric) when is_function(SendFun, 2) ->
-    SendFun(Batch, IfRecordMetric).
+send(SendFun, Batch) when is_function(SendFun, 2) ->
+    SendFun(Batch).
 
-stop(_Ref, _Pid) -> ok.
+stop(_Pid) -> ok.
 
 %% bridge worker should retry connecting remote node indefinitely
 reconnect_test() ->

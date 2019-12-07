@@ -65,7 +65,7 @@
 %% APIs
 -export([ start_link/1
         , start_link/2
-        , import_batch/2
+        , import_batch/1
         , register_metrics/0
         , handle_ack/2
         , stop/1
@@ -127,7 +127,6 @@
 -define(DEFAULT_MAX_TOTAL_SIZE, (1 bsl 31)).
 -define(NO_BRIDGE_HANDLER, undefined).
 -define(NO_FROM, undefined).
--define(maybe_send, {next_event, internal, maybe_send}).
 
 %% @doc Start a bridge worker. Supported configs:
 %% start_type: 'manual' (default) or 'auto', when manual, bridge will stay
@@ -198,10 +197,10 @@ status(Id) ->
     gen_statem:call(name(Id), status).
 
 %% @doc This function is to be evaluated on message/batch receiver side.
--spec import_batch(batch(), boolean()) -> ok.
-import_batch(Batch, IfRecordMetric) ->
+-spec import_batch(batch()) -> ok.
+import_batch(Batch) ->
     PublishMsg = fun(Msg) ->
-                     bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
+                    %  bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
                      emqx_broker:publish(Msg)
                  end,
     lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)).
@@ -257,9 +256,8 @@ init(Config) ->
     Topics = [iolist_to_binary(T) || T <- Forwards],
     Subs = check_subscriptions(Subscriptions),
     ConnectConfig = get_conn_cfg(Config),
-    ConnectFun = fun(SubsX, IfRecordMetrics) ->
-        emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions => SubsX,
-                                                                if_record_metrics => IfRecordMetrics})
+    ConnectFun = fun(SubsX) ->
+        emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions => SubsX})
     end,
     {ok, standing_by, State#{connect_module => ConnectModule,
                              connect_fun => ConnectFun,
@@ -379,7 +377,7 @@ connected(enter, _OldState, #{inflight := Inflight} = State) ->
 connected(state_timeout, failure, State) ->
     {next_state, connecting, State};
 connected(state_timeout, success, State) ->
-    {keep_state, State, ?maybe_send};
+    {keep_state, State, {next_event, internal, maybe_send}};
 connected(internal, maybe_send, State) ->
     case pop_and_send(State) of
         {ok, NewState} ->
@@ -387,9 +385,9 @@ connected(internal, maybe_send, State) ->
         {error, NewState} ->
             {next_state, connecting, disconnect(NewState)}
     end;
-connected(info, {disconnected, ConnRef, Reason},
-          #{conn_ref := ConnRefCurrent, name := Name} = State) ->
-    case ConnRefCurrent =:= ConnRef of
+connected(info, {disconnected, Conn, Reason},
+         #{connection := Connection, name := Name} = State) ->
+    case Conn =:= maps:get(client_pid, Connection, undefined)  of
         true ->
             ?LOG(info, "Bridge ~p diconnected~nreason=~p", [Name, Reason]),
             {next_state, connecting,
@@ -406,7 +404,7 @@ connected(info, {batch_ack, Ref}, #{name := Name} = State) ->
             ?LOG(error, "Bad order ack received by bridge ~p", [Name]),
             {next_state, connecting, disconnect(State)};
         {ok, NewState} ->
-            {keep_state, NewState, ?maybe_send}
+            {keep_state, NewState, {next_event, internal, maybe_send}}
     end;
 connected(Type, Content, State) ->
     common(connected, Type, Content, State).
@@ -416,6 +414,8 @@ common(StateName, {call, From}, status, _State) ->
     {keep_state_and_data, [{reply, From, StateName}]};
 common(_StateName, {call, From}, ensure_started, _State) ->
     {keep_state_and_data, [{reply, From, connected}]};
+common(_StateName, {call, From}, ensure_stopped, _State) ->
+    {stop_and_reply, {shutdown, manual}, [{reply, From, ok}]};
 common(_StateName, {call, From}, get_forwards, #{forwards := Forwards}) ->
     {keep_state_and_data, [{reply, From, Forwards}]};
 common(_StateName, {call, From}, get_subscriptions, #{subscriptions := Subs}) ->
@@ -426,13 +426,10 @@ common(_StateName, {call, From}, {ensure_present, What, Topic}, State) ->
 common(_StateName, {call, From}, {ensure_absent, What, Topic}, State) ->
     {Result, NewState} = ensure_absent(What, Topic, State),
     {keep_state, NewState, [{reply, From, Result}]};
-common(_StateName, {call, From}, ensure_stopped, _State) ->
-    {stop_and_reply, {shutdown, manual},
-     [{reply, From, ok}]};
-common(_StateName, info, {deliver, _, Msg},
-       #{replayq := Q} = State) ->
+common(_StateName, info, {deliver, _, Msg}, #{replayq := Q, if_record_metrics := IfRecordMetric} = State) ->
+    bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
     NewQ = replayq:append(Q, collect([Msg])),
-    {keep_state, State#{replayq => NewQ}, ?maybe_send};
+    {keep_state, State#{replayq => NewQ}, {next_event, internal, maybe_send}};
 common(StateName, Type, Content, #{name := Name} = State) ->
     ?LOG(notice, "Bridge ~p discarded ~p type event at state ~p:\n~p",
           [Name, Type, StateName, Content]),
@@ -491,14 +488,13 @@ do_connect(_Type, connecting, State) ->
 do_connect(#{ forwards := Forwards
             , subscriptions := Subs
             , connect_fun := ConnectFun
-            , if_record_metrics := IfRecordMetrics
             , name := Name
             } = State) ->
     ok = subscribe_local_topics(Forwards, Name),
-    case ConnectFun(Subs, IfRecordMetrics) of
-        {ok, ConnRef, Conn} ->
+    case ConnectFun(Subs) of
+        {ok, Conn} ->
             ?LOG(info, "Bridge ~p is connecting......", [Name]),
-            {ok, eval_bridge_handler(State#{conn_ref => ConnRef, connection => Conn}, connected)};
+            {ok, eval_bridge_handler(State#{connection => Conn}, connected)};
         {error, Reason} ->
             {error, Reason, State}
     end.
@@ -562,8 +558,16 @@ pop_and_send(#{replayq := Q,
     end.
 
 %% Assert non-empty batch because we have a is_empty check earlier.
-do_send(State = #{inflight := Inflight}, QAckRef, [_ | _] = Batch) ->
-    case maybe_send(State, Batch) of
+do_send(#{inflight := Inflight,
+          connect_module := Module,
+          connection := Connection,
+          mountpoint := Mountpoint,
+          if_record_metrics := IfRecordMetrics} = State, QAckRef, Batch) ->
+    ExportMsg = fun(Message) ->
+                    bridges_metrics_inc(IfRecordMetrics, 'bridge.mqtt.message_sent'),
+                    emqx_bridge_msg:to_export(Module, Mountpoint, Message)
+                end,
+    case Module:send(Connection, [ExportMsg(M) || M <- Batch]) of
         {ok, Ref} ->
             %% this is a list of inflight BATCHes, not expecting it to be too long
             NewInflight = Inflight ++ [#{q_ack_ref => QAckRef,
@@ -613,11 +617,10 @@ do_unsubscribe(RawTopic) ->
     emqx_broker:unsubscribe(Topic).
 
 disconnect(#{connection := Conn,
-             conn_ref := ConnRef,
              connect_module := Module
             } = State) when Conn =/= undefined ->
-    ok = Module:stop(ConnRef, Conn),
-    State0 = State#{conn_ref => undefined, connection => undefined},
+    Module:stop(Conn),
+    State0 = State#{connection => undefined},
     eval_bridge_handler(State0, disconnected);
 disconnect(State) ->
     eval_bridge_handler(State, disconnected).
@@ -625,18 +628,6 @@ disconnect(State) ->
 %% Called only when replayq needs to dump it to disk.
 msg_marshaller(Bin) when is_binary(Bin) -> emqx_bridge_msg:from_binary(Bin);
 msg_marshaller(Msg) -> emqx_bridge_msg:to_binary(Msg).
-
-%% Return {ok, SendAckRef} or {error, Reason}
-maybe_send(#{connect_module := Module,
-             connection := Connection,
-             mountpoint := Mountpoint,
-             if_record_metrics := IfRecordMetrics
-            }, Batch) ->
-    ExportMsg = fun(Message) ->
-                    bridges_metrics_inc(IfRecordMetrics, 'bridge.mqtt.message_sent'),
-                    emqx_bridge_msg:to_export(Module, Mountpoint, Message)
-                end,
-    Module:send(Connection, [ExportMsg(M) || M <- Batch], IfRecordMetrics).
 
 format_mountpoint(undefined) ->
     undefined;

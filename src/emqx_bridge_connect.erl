@@ -25,12 +25,10 @@
 %% map fields depend on implementation
 -type(config() :: map()).
 -type(connection() :: term()).
--type(conn_ref() :: term()).
 -type(batch() :: emqx_protal:batch()).
 -type(ack_ref() :: emqx_bridge_worker:ack_ref()).
 -type(topic() :: emqx_topic:topic()).
 -type(qos() :: emqx_mqtt_types:qos()).
--type(is_record_metrics() :: boolean()).
 
 -include_lib("emqx/include/logger.hrl").
 
@@ -39,15 +37,15 @@
 %% establish the connection to remote node/cluster
 %% protal worker (the caller process) should be expecting
 %% a message {disconnected, conn_ref()} when disconnected.
--callback start(config()) -> {ok, conn_ref(), connection()} | {error, any()}.
+-callback start(config()) -> {ok, connection()} | {error, any()}.
 
 %% send to remote node/cluster
 %% bridge worker (the caller process) should be expecting
 %% a message {batch_ack, reference()} when batch is acknowledged by remote node/cluster
--callback send(connection(), batch(), is_record_metrics()) -> {ok, ack_ref()} | {error, any()}.
+-callback send(connection(), batch()) -> {ok, ack_ref()} | {error, any()}.
 
 %% called when owner is shutting down.
--callback stop(conn_ref(), connection()) -> ok.
+-callback stop(connection()) -> ok.
 
 -callback ensure_subscribed(connection(), topic(), qos()) -> ok.
 
@@ -55,8 +53,8 @@
 
 start(Module, Config) ->
     case Module:start(Config) of
-        {ok, Ref, Conn} ->
-            {ok, Ref, Conn};
+        {ok, Conn} ->
+            {ok, Conn};
         {error, Reason} ->
             Config1 = obfuscate(Config),
             ?LOG(error, "Failed to connect with module=~p\n"

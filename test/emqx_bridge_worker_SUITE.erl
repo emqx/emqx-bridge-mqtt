@@ -41,7 +41,7 @@ receive_messages(Count, Msgs) ->
             receive_messages(Count-1, [Msg|Msgs]);
         _Other ->
             receive_messages(Count, Msgs)
-    after 100 ->
+    after 1000 ->
         Msgs
     end.
 
@@ -141,14 +141,14 @@ t_mqtt(Config) when is_list(Config) ->
             reconnect_delay_ms => 1000,
             ssl => false,
             %% Consume back to forwarded message for verification
-            %% NOTE: this is a indefenite loopback without mocking emqx_bridge_worker:import_batch/2
+            %% NOTE: this is a indefenite loopback without mocking emqx_bridge_worker:import_batch/1
             subscriptions => [{ForwardedTopic, _QoS = 1}],
             start_type => auto},
     Tester = self(),
     Ref = make_ref(),
     meck:new(emqx_bridge_worker, [passthrough, no_history]),
-    meck:expect(emqx_bridge_worker, import_batch, 2,
-                fun(Batch, _IfRecordMetrics) ->
+    meck:expect(emqx_bridge_worker, import_batch, 1,
+                fun(Batch) ->
                         Tester ! {publish, {Ref, Batch}}
                 end),
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
