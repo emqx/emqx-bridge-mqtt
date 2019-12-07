@@ -38,15 +38,15 @@
 %%
 %% Batch collector state diagram
 %%
-%% [standing_by] --(0) --> [connecting] --(2)--> [connected]
-%%                          |        ^                 |
-%%                          |        |                 |
-%%                          '--(1)---'--------(3)------'
+%% [idle] --(0) --> [connecting] --(2)--> [connected]
+%%                  |        ^                 |
+%%                  |        |                 |
+%%                  '--(1)---'--------(3)------'
 %%
 %% (0): auto or manual start
 %% (1): retry timeout
 %% (2): successfuly connected to remote node/cluster
-%% (3): received {disconnected, conn_ref(), Reason} OR
+%% (3): received {disconnected, Reason} OR
 %%      failed to send to remote node/cluster.
 %%
 %% NOTE: A bridge worker may subscribe to multiple (including wildcard)
@@ -79,8 +79,7 @@
         ]).
 
 %% state functions
--export([ standing_by/3
-        , connecting/3
+-export([ idle/3
         , connected/3
         ]).
 
@@ -126,11 +125,10 @@
 -define(DEFAULT_SEG_BYTES, (1 bsl 20)).
 -define(DEFAULT_MAX_TOTAL_SIZE, (1 bsl 31)).
 -define(NO_BRIDGE_HANDLER, undefined).
--define(NO_FROM, undefined).
 
 %% @doc Start a bridge worker. Supported configs:
 %% start_type: 'manual' (default) or 'auto', when manual, bridge will stay
-%%      at 'standing_by' state until a manual call to start it.
+%%      at 'idle' state until a manual call to start it.
 %% connect_module: The module which implements emqx_bridge_connect behaviour
 %%      and work as message batch transport layer
 %% reconnect_delay_ms: Delay in milli-seconds for the bridge worker to retry
@@ -243,7 +241,7 @@ ensure_subscription_present(Id, Topic, QoS) ->
 ensure_subscription_absent(Id, Topic) ->
     gen_statem:call(id(Id), {ensure_absent, subscriptions, topic(Topic)}).
 
-callback_mode() -> [state_functions, state_enter].
+callback_mode() -> [state_functions].
 
 %% @doc Config should be a map().
 init(Config) ->
@@ -259,12 +257,13 @@ init(Config) ->
     ConnectFun = fun(SubsX) ->
         emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions => SubsX})
     end,
-    {ok, standing_by, State#{connect_module => ConnectModule,
-                             connect_fun => ConnectFun,
-                             forwards => Topics,
-                             subscriptions => Subs,
-                             replayq => Queue
-                            }}.
+    self() ! idle,
+    {ok, idle, State#{connect_module => ConnectModule,
+                      connect_fun => ConnectFun,
+                      forwards => Topics,
+                      subscriptions => Subs,
+                      replayq => Queue
+                     }}.
 
 init_opts(Config) ->
     IfRecordMetrics = maps:get(if_record_metrics, Config, true),
@@ -326,72 +325,59 @@ terminate(_Reason, _StateName, #{replayq := Q} = State) ->
     ok.
 
 %% @doc Standing by for manual start.
-standing_by(enter, _, #{start_type := auto}) ->
-    {keep_state_and_data, {state_timeout, 0, do_connect}};
-standing_by(enter, _, #{start_type := manual}) ->
+idle(info, idle, #{start_type := manual}) ->
     keep_state_and_data;
-%% ensure_started will be deprecated in the future
-standing_by({call, From}, ensure_started, State) ->
-    do_connect({call, From}, standing_by, State);
-standing_by(state_timeout, do_connect, State) ->
-    {next_state, connecting, State};
-standing_by(info, Info, #{name := Name}= State) ->
-    ?LOG(info, "Bridge ~p discarded info event at state standing_by:\n~p", [Name, Info]),
-    {keep_state_and_data, State};
-standing_by(Type, Content, State) ->
-    common(standing_by, Type, Content, State).
+%% @doc Standing by for auto start.
+idle(info, idle, #{start_type := auto} = State) ->
+    case do_connect(State) of
+        {ok, State1} ->
+            {next_state, connected, State1, {state_timeout, 0, connected}};
+        {error, _Reason} ->
+            keep_state_and_data
+    end;
 
-%% @doc Connecting state is a state with timeout.
-%% After each timeout, it re-enters this state and start a retry until
-%% successfuly connected to remote node/cluster.
-connecting(enter, connected, #{reconnect_delay_ms := Timeout}) ->
-    {keep_state_and_data, {state_timeout, Timeout, reconnect}};
-connecting(enter, _, State) ->
-    do_connect(enter, connecting, State);
-connecting(state_timeout, connected, State) ->
-    {next_state, connected, State};
-connecting(state_timeout, reconnect, _State) ->
-    repeat_state_and_data;
-connecting(info, {batch_ack, Ref}, State) ->
+%% ensure_started will be deprecated in the future
+idle({call, From}, ensure_started, State) ->
+    case do_connect(State) of
+        {ok, State1} ->
+            {next_state, connected, State1, [{reply, From, ok}, {state_timeout, 0, connected}]};
+        {error, Reason} ->
+            {keep_state_and_data, [{reply, From, {error, Reason}}]}
+    end;
+idle(info, {batch_ack, Ref}, State) ->
     case do_ack(State, Ref) of
         {ok, NewState} ->
             {keep_state, NewState};
         _ ->
             keep_state_and_data
     end;
-connecting(internal, maybe_send, _State) ->
-    keep_state_and_data;
-connecting(info, {disconnected, _Ref, _Reason}, _State) ->
-    keep_state_and_data;
-connecting(Type, Content, State) ->
-    common(connecting, Type, Content, State).
+idle(info, Info, #{name := Name} = State) ->
+    ?LOG(info, "Bridge ~p discarded info event at state idle:\n~p", [Name, Info]),
+    {keep_state_and_data, State};
+idle(Type, Content, State) ->
+    common(idle, Type, Content, State).
 
-%% @doc Send batches to remote node/cluster when in 'connected' state.
-connected(enter, _OldState, #{inflight := Inflight} = State) ->
+connected(state_timeout, connected, #{inflight := Inflight} = State) ->
     case retry_inflight(State#{inflight := []}, Inflight) of
         {ok, NewState} ->
-            {keep_state, NewState, {state_timeout, 0, success}};
+            {keep_state, NewState, {next_event, internal, maybe_send}};
         {error, NewState} ->
-            {keep_state, disconnect(NewState), {state_timeout, 0, failure}}
+            NewState1 = disconnect(NewState),
+            {next_state, idle, NewState1}
     end;
-connected(state_timeout, failure, State) ->
-    {next_state, connecting, State};
-connected(state_timeout, success, State) ->
-    {keep_state, State, {next_event, internal, maybe_send}};
 connected(internal, maybe_send, State) ->
     case pop_and_send(State) of
         {ok, NewState} ->
             {keep_state, NewState};
         {error, NewState} ->
-            {next_state, connecting, disconnect(NewState)}
+            {next_state, idle, disconnect(NewState)}
     end;
 connected(info, {disconnected, Conn, Reason},
          #{connection := Connection, name := Name} = State) ->
     case Conn =:= maps:get(client_pid, Connection, undefined)  of
         true ->
             ?LOG(info, "Bridge ~p diconnected~nreason=~p", [Name, Reason]),
-            {next_state, connecting,
-             State#{conn_ref => undefined, connection => undefined}};
+            {next_state, idle, State#{connection => undefined}};
         false ->
             keep_state_and_data
     end;
@@ -402,7 +388,7 @@ connected(info, {batch_ack, Ref}, #{name := Name} = State) ->
         bad_order ->
             %% try re-connect then re-send
             ?LOG(error, "Bad order ack received by bridge ~p", [Name]),
-            {next_state, connecting, disconnect(State)};
+            {next_state, idle, disconnect(State)};
         {ok, NewState} ->
             {keep_state, NewState, {next_event, internal, maybe_send}}
     end;
@@ -470,26 +456,10 @@ is_topic_present({Topic, _QoS}, Topics) ->
 is_topic_present(Topic, Topics) ->
     lists:member(Topic, Topics) orelse false =/= lists:keyfind(Topic, 1, Topics).
 
-do_connect({call, Pid}, _StateName, State) ->
-    case do_connect(State) of
-        {ok, State1} ->
-            {next_state, connected, State1, [{reply, Pid, ok}]};
-        {error, Reason} ->
-            {keep_state_and_data, [{reply, Pid, {error, Reason}}]}
-    end;
-do_connect(_Type, connecting, State) ->
-    case do_connect(#{reconnect_delay_ms := Timeout} = State) of
-        {ok, State1} ->
-            {keep_state, State1, {state_timeout, 0, connected}};
-        {error, _Reason, _State1} ->
-            {keep_state_and_data, {state_timeout, Timeout, reconnect}}
-    end.
-
-do_connect(#{ forwards := Forwards
-            , subscriptions := Subs
-            , connect_fun := ConnectFun
-            , name := Name
-            } = State) ->
+do_connect(#{forwards := Forwards,
+             subscriptions := Subs,
+             connect_fun := ConnectFun,
+             name := Name} = State) ->
     ok = subscribe_local_topics(Forwards, Name),
     case ConnectFun(Subs) of
         {ok, Conn} ->
