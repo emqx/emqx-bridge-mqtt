@@ -42,7 +42,7 @@
 %% send to remote node/cluster
 %% bridge worker (the caller process) should be expecting
 %% a message {batch_ack, reference()} when batch is acknowledged by remote node/cluster
--callback send(connection(), batch()) -> {ok, ack_ref()} | {error, any()}.
+-callback send(connection(), batch()) -> {ok, ack_ref()} | {ok, integer()} | {error, any()}.
 
 %% called when owner is shutting down.
 -callback stop(connection()) -> ok.

@@ -438,7 +438,7 @@ options(Options, PoolName) ->
     Get = fun(Key) -> GetD(Key, undefined) end,
     Address = Get(<<"address">>),
     [{max_inflight_batches, 32},
-     {mountpoint, str(Get(<<"mountpoint">>))},
+     {forward_mountpoint, str(Get(<<"mountpoint">>))},
      {disk_cache, cuttlefish_flag:parse(str(Get(<<"disk_cache">>)))},
      {start_type, auto},
      {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
