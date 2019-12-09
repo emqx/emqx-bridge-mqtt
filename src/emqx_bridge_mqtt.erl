@@ -45,7 +45,8 @@
 start(Config = #{address := Address}) ->
     Parent = self(),
     AckCollector = spawn_link(fun() -> ack_collector(Parent) end),
-    Handlers = make_hdlr(Parent, AckCollector),
+    Mountpoint = maps:get(receive_mountpoint, Config, undefined),
+    Handlers = make_hdlr(Parent, AckCollector, Mountpoint),
     {Host, Port} = case string:tokens(Address, ":") of
                        [H] -> {H, 1883};
                        [H, P] -> {H, list_to_integer(P)}
@@ -161,7 +162,7 @@ match_acks(Parent, Acked, Sent) ->
 match_acks_1(_Parent, {empty, Empty}, Sent) -> {Empty, Sent};
 match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId]) | Sent]) ->
     %% batch finished
-    ok = emqx_bridge_worker:handle_ack(Parent, Ref),
+    Parent ! {batch_ack, Ref},
     match_acks(Parent, Acked, Sent);
 match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId | RestIds]) | Sent]) ->
     %% one message finished, but not the whole batch
@@ -178,14 +179,12 @@ handle_puback(AckCollector, #{packet_id := PktId, reason_code := RC}) ->
     AckCollector ! {acked, PktId},
     ok.
 
-%% Message published from remote broker. Import to local broker.
-import_msg(Msg) ->
-    %% auto-ack should be enabled in emqtt, hence dummy ack-fun.
-    emqx_bridge_worker:import_batch([Msg]).
+handle_publish(Msg, Mountpoint) ->
+    emqx_broker:publish(emqx_bridge_msg:to_broker_msg(Msg, Mountpoint)).
 
-make_hdlr(Parent, AckCollector) ->
+make_hdlr(Parent, AckCollector, Mountpoint) ->
     #{puback => fun(Ack) -> handle_puback(AckCollector, Ack) end,
-      publish => fun(Msg) -> import_msg(Msg) end,
+      publish => fun(Msg) -> handle_publish(Msg, Mountpoint) end,
       disconnected => fun(Reason) -> Parent ! {disconnected, self(), Reason}, ok end
      }.
 

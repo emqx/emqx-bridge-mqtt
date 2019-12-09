@@ -66,7 +66,7 @@ send(#{address := Remote}, Batch) ->
     case ?RPC:call(Remote, ?MODULE, handle_send, [Batch]) of
         ok ->
             Ref = make_ref(),
-            emqx_bridge_worker:handle_ack(self(), Ref),
+            self() ! {batch_ack, Ref},
             {ok, Ref};
         {badrpc, Reason} -> {error, Reason}
     end.

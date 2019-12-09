@@ -14,6 +14,11 @@
   {datatype, {enum, [true, false]}}
 ]}.
 
+{mapping, "bridge.mqtt.$name.start_type", "emqx_bridge_mqtt.bridges", [
+  {datatype, {enum, [manual, auto]}},
+  {default, auto}
+]}.
+
 {mapping, "bridge.mqtt.$name.clientid", "emqx_bridge_mqtt.bridges", [
   {datatype, string}
 ]}.
@@ -31,13 +36,25 @@
   {datatype, string}
 ]}.
 
-{mapping, "bridge.mqtt.$name.mountpoint", "emqx_bridge_mqtt.bridges", [
-  {datatype, string}
-]}.
-
 {mapping, "bridge.mqtt.$name.forwards", "emqx_bridge_mqtt.bridges", [
   {datatype, string},
   {default, ""}
+]}.
+
+{mapping, "bridge.mqtt.$name.forward_mountpoint", "emqx_bridge_mqtt.bridges", [
+  {datatype, string}
+]}.
+
+{mapping, "bridge.mqtt.$name.subscription.$id.topic", "emqx_bridge_mqtt.bridges", [
+  {datatype, string}
+]}.
+
+{mapping, "bridge.mqtt.$name.subscription.$id.qos", "emqx_bridge_mqtt.bridges", [
+  {datatype, integer}
+]}.
+
+{mapping, "bridge.mqtt.$name.receive_mountpoint", "emqx_bridge_mqtt.bridges", [
+  {datatype, string}
 ]}.
 
 {mapping, "bridge.mqtt.$name.ssl", "emqx_bridge_mqtt.bridges", [
@@ -73,19 +90,6 @@
 {mapping, "bridge.mqtt.$name.tls_versions", "emqx_bridge_mqtt.bridges", [
   {datatype, string},
   {default, "tlsv1,tlsv1.1,tlsv1.2"}
-]}.
-
-{mapping, "bridge.mqtt.$name.subscription.$id.topic", "emqx_bridge_mqtt.bridges", [
-  {datatype, string}
-]}.
-
-{mapping, "bridge.mqtt.$name.subscription.$id.qos", "emqx_bridge_mqtt.bridges", [
-  {datatype, integer}
-]}.
-
-{mapping, "bridge.mqtt.$name.start_type", "emqx_bridge_mqtt.bridges", [
-  {datatype, {enum, [manual, auto]}},
-  {default, auto}
 ]}.
 
 {mapping, "bridge.mqtt.$name.reconnect_interval", "emqx_bridge_mqtt.bridges", [

@@ -95,7 +95,7 @@ t_rpc(Config) when is_list(Config) ->
     Cfg = #{address => node(),
             forwards => [<<"t_rpc/#">>],
             connect_module => emqx_bridge_rpc,
-            mountpoint => <<"forwarded">>,
+            forward_mountpoint => <<"forwarded">>,
             start_type => auto},
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
     ClientId = <<"ClientId">>,
@@ -119,13 +119,12 @@ t_rpc(Config) when is_list(Config) ->
 t_mqtt(Config) when is_list(Config) ->
     SendToTopic = <<"t_mqtt/one">>,
     SendToTopic2 = <<"t_mqtt/two">>,
+    SendToTopic3 = <<"t_mqtt/three">>,
     Mountpoint = <<"forwarded/${node}/">>,
-    ForwardedTopic = emqx_topic:join(["forwarded", atom_to_list(node()), SendToTopic]),
-    ForwardedTopic2 = emqx_topic:join(["forwarded", atom_to_list(node()), SendToTopic2]),
     Cfg = #{address => "127.0.0.1:1883",
             forwards => [SendToTopic],
             connect_module => emqx_bridge_mqtt,
-            mountpoint => Mountpoint,
+            forward_mountpoint => Mountpoint,
             username => "user",
             clean_start => true,
             clientid => "bridge_aws",
@@ -142,35 +141,37 @@ t_mqtt(Config) when is_list(Config) ->
             ssl => false,
             %% Consume back to forwarded message for verification
             %% NOTE: this is a indefenite loopback without mocking emqx_bridge_worker:import_batch/1
-            subscriptions => [{ForwardedTopic, _QoS = 1}],
+            subscriptions => [{SendToTopic2, _QoS = 1}],
+            receive_mountpoint => <<"receive/aws/">>,
             start_type => auto},
-    Tester = self(),
-    Ref = make_ref(),
-    meck:new(emqx_bridge_worker, [passthrough, no_history]),
-    meck:expect(emqx_bridge_worker, import_batch, 1,
-                fun(Batch) ->
-                        Tester ! {publish, {Ref, Batch}}
-                end),
     {ok, Pid} = emqx_bridge_worker:start_link(?FUNCTION_NAME, Cfg),
     ClientId = <<"client-1">>,
     try
-        ?assertEqual([{ForwardedTopic, 1}], emqx_bridge_worker:get_subscriptions(Pid)),
-        ok = emqx_bridge_worker:ensure_subscription_present(Pid, ForwardedTopic2, _QoS = 1),
-        ok = emqx_bridge_worker:ensure_forward_present(Pid, SendToTopic2),
-        ?assertEqual([{ForwardedTopic, 1},
-                      {ForwardedTopic2, 1}],
+        ?assertEqual([{SendToTopic2, 1}], emqx_bridge_worker:get_subscriptions(Pid)),
+        ok = emqx_bridge_worker:ensure_subscription_present(Pid, SendToTopic3, _QoS = 1),
+        ?assertEqual([{SendToTopic3, 1},{SendToTopic2, 1}],
                      emqx_bridge_worker:get_subscriptions(Pid)),
         {ok, ConnPid} = emqtt:start_link([{clientid, ClientId}]),
         {ok, _Props} = emqtt:connect(ConnPid),
+        emqtt:subscribe(ConnPid, <<"forwarded/+/t_mqtt/one">>, 1),
         %% message from a different client, to avoid getting terminated by no-local
-        Max = 100,
+        Max = 10,
         Msgs = lists:seq(1, Max),
         lists:foreach(fun(I) ->
                           {ok, _PacketId} = emqtt:publish(ConnPid, SendToTopic, integer_to_binary(I), ?QOS_1)
                       end, Msgs),
-        ?assertEqual(100, length(receive_messages(200))),
+        ?assertEqual(10, length(receive_messages(200))),
+
+        emqtt:subscribe(ConnPid, <<"receive/aws/t_mqtt/two">>, 1),
+        %% message from a different client, to avoid getting terminated by no-local
+        Max = 10,
+        Msgs = lists:seq(1, Max),
+        lists:foreach(fun(I) ->
+                          {ok, _PacketId} = emqtt:publish(ConnPid, SendToTopic2, integer_to_binary(I), ?QOS_1)
+                      end, Msgs),
+        ?assertEqual(10, length(receive_messages(200))),
+
         emqtt:disconnect(ConnPid)
     after
-        ok = emqx_bridge_worker:stop(Pid),
-        meck:unload(emqx_bridge_worker)
+        ok = emqx_bridge_worker:stop(Pid)
     end.

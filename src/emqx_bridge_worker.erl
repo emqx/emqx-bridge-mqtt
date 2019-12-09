@@ -65,9 +65,7 @@
 %% APIs
 -export([ start_link/1
         , start_link/2
-        , import_batch/1
         , register_metrics/0
-        , handle_ack/2
         , stop/1
         ]).
 
@@ -161,7 +159,6 @@ start_link(Name, Config) ->
 ensure_started(Name) ->
     gen_statem:call(name(Name), ensure_started).
 
-
 %% @doc Manually stop bridge worker. State idempotency ensured.
 ensure_stopped(Id) ->
     ensure_stopped(Id, 1000).
@@ -193,22 +190,6 @@ status(Pid) when is_pid(Pid) ->
     gen_statem:call(Pid, status);
 status(Id) ->
     gen_statem:call(name(Id), status).
-
-%% @doc This function is to be evaluated on message/batch receiver side.
--spec import_batch(batch()) -> ok.
-import_batch(Batch) ->
-    PublishMsg = fun(Msg) ->
-                    %  bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
-                     emqx_broker:publish(Msg)
-                 end,
-    lists:foreach(PublishMsg, emqx_bridge_msg:to_broker_msgs(Batch)).
-
-%% @doc This function is to be evaluated on message/batch exporter side
-%% when message/batch is accepted by remote node.
--spec handle_ack(pid(), ack_ref()) -> ok.
-handle_ack(Pid, Ref) when node() =:= node(Pid) ->
-    Pid ! {batch_ack, Ref},
-    ok.
 
 %% @doc Return all forwards (local subscriptions).
 -spec get_forwards(id()) -> [topic()].
@@ -271,7 +252,8 @@ init_opts(Config) ->
     MaxInflightBatches = maps:get(max_inflight_batches, Config, ?DEFAULT_SEND_AHEAD),
     StartType = maps:get(start_type, Config, manual),
     BridgeHandler = maps:get(bridge_handler, Config, ?NO_BRIDGE_HANDLER),
-    Mountpoint = maps:get(mountpoint, Config, undefined),
+    Mountpoint = maps:get(forward_mountpoint, Config, undefined),
+    ReceiveMountpoint = maps:get(receive_mountpoint, Config, undefined),
     BatchBytesLimit = maps:get(batch_bytes_limit, Config, ?DEFAULT_BATCH_BYTES),
     BatchCountLimit = maps:get(batch_count_limit, Config, ?DEFAULT_BATCH_COUNT),
     Name = maps:get(name, Config, undefined),
@@ -281,6 +263,7 @@ init_opts(Config) ->
       batch_count_limit => BatchCountLimit,
       max_inflight_batches => MaxInflightBatches,
       mountpoint => format_mountpoint(Mountpoint),
+      receive_mountpoint => ReceiveMountpoint,
       inflight => [],
       connection => undefined,
       bridge_handler => BridgeHandler,
@@ -311,8 +294,8 @@ get_conn_cfg(Config) ->
                   queue,
                   reconnect_delay_ms,
                   max_inflight_batches,
-                  mountpoint,
                   forwards,
+                  mountpoint,
                   name
                  ], Config).
 
