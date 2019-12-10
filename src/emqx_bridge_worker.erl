@@ -307,18 +307,6 @@ terminate(_Reason, _StateName, #{replayq := Q} = State) ->
     _ = replayq:close(Q),
     ok.
 
-%% @doc Standing by for manual start.
-idle(info, idle, #{start_type := manual}) ->
-    keep_state_and_data;
-%% @doc Standing by for auto start.
-idle(info, idle, #{start_type := auto} = State) ->
-    case do_connect(State) of
-        {ok, State1} ->
-            {next_state, connected, State1, {state_timeout, 0, connected}};
-        {error, _Reason} ->
-            keep_state_and_data
-    end;
-
 %% ensure_started will be deprecated in the future
 idle({call, From}, ensure_started, State) ->
     case do_connect(State) of
@@ -327,6 +315,15 @@ idle({call, From}, ensure_started, State) ->
         {error, Reason} ->
             {keep_state_and_data, [{reply, From, {error, Reason}}]}
     end;
+%% @doc Standing by for manual start.
+idle(info, idle, #{start_type := manual}) ->
+    keep_state_and_data;
+%% @doc Standing by for auto start.
+idle(info, idle, #{start_type := auto} = State) ->
+    connecting(State);
+idle(state_timeout, reconnect, State) ->
+    connecting(State);
+
 idle(info, {batch_ack, Ref}, State) ->
     case do_ack(State, Ref) of
         {ok, NewState} ->
@@ -340,40 +337,40 @@ idle(info, Info, #{name := Name} = State) ->
 idle(Type, Content, State) ->
     common(idle, Type, Content, State).
 
+connecting(#{reconnect_delay_ms := ReconnectDelayMs} = State) ->
+    case do_connect(State) of
+        {ok, State1} ->
+            {next_state, connected, State1, {state_timeout, 0, connected}};
+        _ ->
+            {keep_state_and_data, {state_timeout, ReconnectDelayMs, reconnect}}
+    end.
+
 connected(state_timeout, connected, #{inflight := Inflight} = State) ->
     case retry_inflight(State#{inflight := []}, Inflight) of
         {ok, NewState} ->
             {keep_state, NewState, {next_event, internal, maybe_send}};
         {error, NewState} ->
-            NewState1 = disconnect(NewState),
-            {next_state, idle, NewState1}
+            {keep_state, NewState}
     end;
 connected(internal, maybe_send, State) ->
-    case pop_and_send(State) of
-        {ok, NewState} ->
-            {keep_state, NewState};
-        {error, NewState} ->
-            {next_state, idle, disconnect(NewState)}
-    end;
+    {_, NewState} = pop_and_send(State),
+    {keep_state, NewState};
+
 connected(info, {disconnected, Conn, Reason},
-         #{connection := Connection, name := Name} = State) ->
+         #{connection := Connection, name := Name, reconnect_delay_ms := ReconnectDelayMs} = State) ->
     case Conn =:= maps:get(client_pid, Connection, undefined)  of
         true ->
             ?LOG(info, "Bridge ~p diconnected~nreason=~p", [Name, Reason]),
-            {next_state, idle, State#{connection => undefined}};
+            {next_state, idle, State#{connection => undefined}, {state_timeout, ReconnectDelayMs, reconnect}};
         false ->
             keep_state_and_data
     end;
-connected(info, {batch_ack, Ref}, #{name := Name} = State) ->
+connected(info, {batch_ack, Ref}, State) ->
     case do_ack(State, Ref) of
-        stale ->
-            keep_state_and_data;
-        bad_order ->
-            %% try re-connect then re-send
-            ?LOG(error, "Bad order ack received by bridge ~p", [Name]),
-            {next_state, idle, disconnect(State)};
         {ok, NewState} ->
-            {keep_state, NewState, {next_event, internal, maybe_send}}
+            {keep_state, NewState, {next_event, internal, maybe_send}};
+        _ ->
+            keep_state_and_data
     end;
 connected(Type, Content, State) ->
     common(connected, Type, Content, State).
