@@ -129,7 +129,6 @@ t_mqtt(Config) when is_list(Config) ->
             clean_start => true,
             clientid => "bridge_aws",
             keepalive => 60000,
-            max_inflight => 32,
             password => "passwd",
             proto_ver => mqttv4,
             queue => #{replayq_dir => "data/t_mqtt/",

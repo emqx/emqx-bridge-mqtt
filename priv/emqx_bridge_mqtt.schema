@@ -102,17 +102,9 @@
   {datatype, {duration, ms}}
 ]}.
 
-{mapping, "bridge.mqtt.$name.max_inflight_batches", "emqx_bridge_mqtt.bridges", [
+{mapping, "bridge.mqtt.$name.batch_size", "emqx_bridge_mqtt.bridges", [
   {default, 0},
   {datatype, integer}
-]}.
-
-{mapping, "bridge.mqtt.$name.batch_count_limit", "emqx_bridge_mqtt.bridges", [
-  {datatype, integer}
-]}.
-
-{mapping, "bridge.mqtt.$name.batch_bytes_limit", "emqx_bridge_mqtt.bridges", [
-  {datatype, bytesize}
 ]}.
 
 {mapping, "bridge.mqtt.$name.queue.replayq_dir", "emqx_bridge_mqtt.bridges", [
@@ -216,8 +208,6 @@
                 Cfg#{address => Addr};
             Tr(reconnect_interval, Ms, Cfg) ->
                 Cfg#{reconnect_delay_ms => Ms};
-            Tr(max_inflight, Count, Cfg) ->
-                Cfg#{max_inflight_batches => Count};
             Tr(proto_ver, Ver, Cfg) ->
                 Cfg#{proto_ver =>
                    case Ver of

@@ -129,7 +129,7 @@ send(#{client_pid := ClientPid} = Conn, [Msg | Rest], _PktId) ->
 
 handle_puback(Parent, #{packet_id := PktId, reason_code := RC}) ->
     RC =:= ?RC_SUCCESS orelse error({puback_error_code, RC}),
-    Parent ! {acked, PktId},
+    Parent ! {batch_ack, PktId},
     ok.
 
 handle_publish(Msg, Mountpoint) ->

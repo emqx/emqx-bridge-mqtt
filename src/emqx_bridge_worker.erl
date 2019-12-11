@@ -116,8 +116,7 @@
 -logger_header("[Bridge]").
 
 %% same as default in-flight limit for emqtt
--define(DEFAULT_BATCH_COUNT, 32).
--define(DEFAULT_BATCH_BYTES, 1 bsl 20).
+-define(DEFAULT_BATCH_SIZE, 32).
 -define(DEFAULT_SEND_AHEAD, 8).
 -define(DEFAULT_RECONNECT_DELAY_MS, timer:seconds(5)).
 -define(DEFAULT_SEG_BYTES, (1 bsl 20)).
@@ -249,19 +248,15 @@ init(Config) ->
 init_opts(Config) ->
     IfRecordMetrics = maps:get(if_record_metrics, Config, true),
     ReconnDelayMs = maps:get(reconnect_delay_ms, Config, ?DEFAULT_RECONNECT_DELAY_MS),
-    MaxInflightBatches = maps:get(max_inflight_batches, Config, ?DEFAULT_SEND_AHEAD),
     StartType = maps:get(start_type, Config, manual),
     BridgeHandler = maps:get(bridge_handler, Config, ?NO_BRIDGE_HANDLER),
     Mountpoint = maps:get(forward_mountpoint, Config, undefined),
     ReceiveMountpoint = maps:get(receive_mountpoint, Config, undefined),
-    BatchBytesLimit = maps:get(batch_bytes_limit, Config, ?DEFAULT_BATCH_BYTES),
-    BatchCountLimit = maps:get(batch_count_limit, Config, ?DEFAULT_BATCH_COUNT),
+    BatchSize = maps:get(batch_size, Config, ?DEFAULT_BATCH_SIZE),
     Name = maps:get(name, Config, undefined),
     #{start_type => StartType,
       reconnect_delay_ms => ReconnDelayMs,
-      batch_bytes_limit => BatchBytesLimit,
-      batch_count_limit => BatchCountLimit,
-      max_inflight_batches => MaxInflightBatches,
+      batch_size => BatchSize,
       mountpoint => format_mountpoint(Mountpoint),
       receive_mountpoint => ReceiveMountpoint,
       inflight => [],
@@ -293,7 +288,6 @@ get_conn_cfg(Config) ->
     maps:without([connect_module,
                   queue,
                   reconnect_delay_ms,
-                  max_inflight_batches,
                   forwards,
                   mountpoint,
                   name
@@ -346,7 +340,7 @@ connecting(#{reconnect_delay_ms := ReconnectDelayMs} = State) ->
     end.
 
 connected(state_timeout, connected, #{inflight := Inflight} = State) ->
-    case retry_inflight(State#{inflight := []}, Inflight) of
+    case retry_inflight(State, Inflight) of
         {ok, NewState} ->
             {keep_state, NewState, {next_event, internal, maybe_send}};
         {error, NewState} ->
@@ -480,29 +474,22 @@ collect(Acc) ->
 
 %% Retry all inflight (previously sent but not acked) batches.
 retry_inflight(State, []) -> {ok, State};
-retry_inflight(#{inflight := Inflight} = State,
-               [#{q_ack_ref := QAckRef, batch := Batch} | T] = Remain) ->
-    case do_send(State, QAckRef, Batch) of
-        {ok, NewState} ->
-            retry_inflight(NewState, T);
-        {error, Reason} ->
-            ?LOG(error, "Inflight retry failed\n~p", [Reason]),
-            {error, State#{inflight := Inflight ++ Remain}}
+retry_inflight(State, [#{q_ack_ref := QAckRef, batch := Batch} | Inflight]) ->
+    case do_send(State#{inflight := Inflight}, QAckRef, Batch) of
+        {ok, State1} -> retry_inflight(State1, Inflight);
+        {error, State1} -> {error, State1}
     end.
 
-pop_and_send(#{inflight := Inflight,
-               max_inflight_batches := Max
-              } = State) when length(Inflight) >= Max ->
-    {ok, State};
-pop_and_send(#{replayq := Q,
-               batch_count_limit := CountLimit,
-               batch_bytes_limit := BytesLimit
-              } = State) ->
+pop_and_send(#{replayq := Q, connect_module := Module} = State) ->
     case replayq:is_empty(Q) of
         true ->
             {ok, State};
         false ->
-            Opts = #{count_limit => CountLimit, bytes_limit => BytesLimit},
+            BatchSize = case Module of
+                emqx_bridge_rpc -> maps:get(batch_size, State);
+                _ -> 1
+            end,
+            Opts = #{count_limit => BatchSize, bytes_limit => 999999999},
             {Q1, QAckRef, Batch} = replayq:pop(Q, Opts),
             do_send(State#{replayq := Q1}, QAckRef, Batch)
     end.
@@ -519,25 +506,29 @@ do_send(#{inflight := Inflight,
                 end,
     case Module:send(Connection, [ExportMsg(M) || M <- Batch]) of
         {ok, Ref} ->
-            %% this is a list of inflight BATCHes, not expecting it to be too long
-            NewInflight = Inflight ++ [#{q_ack_ref => QAckRef,
-                                         send_ack_ref => Ref,
-                                         batch => Batch}],
-            {ok, State#{inflight := NewInflight}};
+            {ok, State#{inflight := Inflight ++ [#{q_ack_ref => QAckRef,
+                                                   send_ack_ref => Ref,
+                                                   batch => Batch}]}};
         {error, Reason} ->
             ?LOG(info, "Batch produce failed\n~p", [Reason]),
             {error, State}
     end.
 
-do_ack(State = #{inflight := [#{send_ack_ref := Refx, q_ack_ref := QAckRef} | Rest],
-                 replayq := Q}, Ref) when Refx =:= Ref ->
+
+do_ack(#{inflight := []} = State, Ref) ->
+    ?LOG(error, "Can't be found from the inflight:\n~p", [Ref]),
+    {ok, State};
+
+do_ack(#{inflight := [#{send_ack_ref := Ref,
+                        q_ack_ref := QAckRef}| Rest], replayq := Q} = State, Ref) ->
     ok = replayq:ack(Q, QAckRef),
-    {ok, State#{inflight := Rest}};
-do_ack(#{inflight := Inflight}, Ref) ->
-    case lists:any(fun(#{send_ack_ref := Ref0}) -> Ref0 =:= Ref end, Inflight) of
-        true -> bad_order;
-        false -> stale
-    end.
+    {ok, State#{inflight => Rest}};
+
+do_ack(#{inflight := [#{q_ack_ref := QAckRef,
+                        batch := Batch}| Rest], replayq := Q} = State, Ref) ->
+    ok = replayq:ack(Q, QAckRef),
+    NewQ = replayq:append(Q, Batch),
+    do_ack(State#{replayq => NewQ, inflight => Rest}, Ref).
 
 subscribe_local_topics(Topics, Name) ->
     lists:foreach(fun(Topic) -> subscribe_local_topic(Topic, Name) end, Topics).
