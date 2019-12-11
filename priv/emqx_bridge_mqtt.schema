@@ -102,6 +102,11 @@
   {datatype, {duration, ms}}
 ]}.
 
+{mapping, "bridge.mqtt.$name.max_inflight_size", "emqx_bridge_mqtt.bridges", [
+   {default, 0},
+   {datatype, integer}
+ ]}.
+
 {mapping, "bridge.mqtt.$name.batch_size", "emqx_bridge_mqtt.bridges", [
   {default, 0},
   {datatype, integer}

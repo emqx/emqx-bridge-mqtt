@@ -117,7 +117,6 @@
 
 %% same as default in-flight limit for emqtt
 -define(DEFAULT_BATCH_SIZE, 32).
--define(DEFAULT_SEND_AHEAD, 8).
 -define(DEFAULT_RECONNECT_DELAY_MS, timer:seconds(5)).
 -define(DEFAULT_SEG_BYTES, (1 bsl 20)).
 -define(DEFAULT_MAX_TOTAL_SIZE, (1 bsl 31)).
@@ -252,6 +251,7 @@ init_opts(Config) ->
     BridgeHandler = maps:get(bridge_handler, Config, ?NO_BRIDGE_HANDLER),
     Mountpoint = maps:get(forward_mountpoint, Config, undefined),
     ReceiveMountpoint = maps:get(receive_mountpoint, Config, undefined),
+    MaxInflightSize = maps:get(max_inflight_batches, Config, ?DEFAULT_BATCH_SIZE),
     BatchSize = maps:get(batch_size, Config, ?DEFAULT_BATCH_SIZE),
     Name = maps:get(name, Config, undefined),
     #{start_type => StartType,
@@ -260,6 +260,7 @@ init_opts(Config) ->
       mountpoint => format_mountpoint(Mountpoint),
       receive_mountpoint => ReceiveMountpoint,
       inflight => [],
+      max_inflight => MaxInflightSize,
       connection => undefined,
       bridge_handler => BridgeHandler,
       if_record_metrics => IfRecordMetrics,
@@ -480,6 +481,8 @@ retry_inflight(State, [#{q_ack_ref := QAckRef, batch := Batch} | Inflight]) ->
         {error, State1} -> {error, State1}
     end.
 
+pop_and_send(#{inflight := Inflight, max_inflight := Max } = State) when length(Inflight) >= Max ->
+    {ok, State};
 pop_and_send(#{replayq := Q, connect_module := Module} = State) ->
     case replayq:is_empty(Q) of
         true ->
