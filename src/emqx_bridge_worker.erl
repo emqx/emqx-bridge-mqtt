@@ -326,9 +326,7 @@ idle(info, {batch_ack, Ref}, State) ->
         _ ->
             keep_state_and_data
     end;
-idle(info, Info, #{name := Name} = State) ->
-    ?LOG(info, "Bridge ~p discarded info event at state idle:\n~p", [Name, Info]),
-    {keep_state_and_data, State};
+
 idle(Type, Content, State) ->
     common(idle, Type, Content, State).
 
@@ -391,8 +389,10 @@ common(_StateName, info, {deliver, _, Msg}, #{replayq := Q, if_record_metrics :=
     bridges_metrics_inc(IfRecordMetric, 'bridge.mqtt.message_received'),
     NewQ = replayq:append(Q, collect([Msg])),
     {keep_state, State#{replayq => NewQ}, {next_event, internal, maybe_send}};
+common(_StateName, info, {'EXIT', _, _}, State) ->
+    {keep_state, State};
 common(StateName, Type, Content, #{name := Name} = State) ->
-    ?LOG(notice, "Bridge ~p discarded ~p type event at state ~p:\n~p",
+    ?LOG(notice, "Bridge ~p discarded ~p type event at state ~p:~p",
           [Name, Type, StateName, Content]),
     {keep_state, State}.
 
@@ -513,13 +513,13 @@ do_send(#{inflight := Inflight,
                                                    send_ack_ref => Ref,
                                                    batch => Batch}]}};
         {error, Reason} ->
-            ?LOG(info, "Batch produce failed\n~p", [Reason]),
+            ?LOG(info, "Batch produce failed~p", [Reason]),
             {error, State}
     end.
 
 
 do_ack(#{inflight := []} = State, Ref) ->
-    ?LOG(error, "Can't be found from the inflight:\n~p", [Ref]),
+    ?LOG(error, "Can't be found from the inflight:~p", [Ref]),
     {ok, State};
 
 do_ack(#{inflight := [#{send_ack_ref := Ref,
