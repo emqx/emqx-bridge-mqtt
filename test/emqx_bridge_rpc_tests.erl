@@ -29,17 +29,14 @@ send_and_ack_test() ->
                         rpc:cast(Node, Module, Fun, Args)
                 end),
     meck:new(emqx_bridge_worker, [passthrough, no_history]),
-    meck:expect(emqx_bridge_worker, import_batch, 3,
-                fun(batch, AckFun, _IfRecordMetrics) -> AckFun() end),
     try
-        {ok, Pid, Node} = emqx_bridge_rpc:start(#{address => node(), if_record_metrics => true}),
-        {ok, Ref} = emqx_bridge_rpc:send(Node, batch, true),
+        {ok, #{client_pid := Pid, address := Node}} = emqx_bridge_rpc:start(#{address => node()}),
+        {ok, Ref} = emqx_bridge_rpc:send(#{address => Node}, []),
         receive
             {batch_ack, Ref} ->
                 ok
         end,
-        ok = emqx_bridge_rpc:stop(Pid, Node)
+        ok = emqx_bridge_rpc:stop( #{client_pid => Pid})
     after
-        meck:unload(emqx_rpc),
-        meck:unload(emqx_bridge_worker)
+        meck:unload(emqx_rpc)
     end.

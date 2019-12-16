@@ -257,8 +257,18 @@
             description => #{en => <<"Reconnect Interval of bridge">>,
                              zh => <<"重连间隔"/utf8>>}
         },
-        disk_cache => #{
+         batch_size => #{
             order => 5,
+            type => number,
+            required => false,
+            default => 32,
+            title => #{en => <<"Batch Size">>,
+                       zh => <<"批处理大小"/utf8>>},
+            description => #{en => <<"Batch Size">>,
+                             zh => <<"批处理大小"/utf8>>}
+        },
+        disk_cache => #{
+            order => 6,
             type => string,
             required => false,
             default => <<"on">>,
@@ -438,7 +448,7 @@ options(Options, PoolName) ->
     Get = fun(Key) -> GetD(Key, undefined) end,
     Address = Get(<<"address">>),
     [{max_inflight_batches, 32},
-     {mountpoint, str(Get(<<"mountpoint">>))},
+     {forward_mountpoint, str(Get(<<"mountpoint">>))},
      {disk_cache, cuttlefish_flag:parse(str(Get(<<"disk_cache">>)))},
      {start_type, auto},
      {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
@@ -448,7 +458,8 @@ options(Options, PoolName) ->
     ] ++ case is_node_addr(Address) of
              true ->
                  [{address, binary_to_atom(Get(<<"address">>), utf8)},
-                  {connect_module, emqx_bridge_rpc}];
+                  {connect_module, emqx_bridge_rpc},
+                  {batch_size, Get(<<"batch_size">>)}];
              false ->
                  [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
