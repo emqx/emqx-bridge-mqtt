@@ -20,6 +20,8 @@
         , from_binary/1
         , to_export/3
         , to_broker_msgs/1
+        , to_broker_msg/1
+        , to_broker_msg/2
         , estimate_size/1
         ]).
 
@@ -78,11 +80,18 @@ to_broker_msgs(Batch) -> lists:map(fun to_broker_msg/1, Batch).
 to_broker_msg(#message{} = Msg) ->
     %% internal format from another EMQX node via rpc
     Msg;
+to_broker_msg(Msg) ->
+    to_broker_msg(Msg, undefined).
 to_broker_msg(#{qos := QoS, dup := Dup, retain := Retain, topic := Topic,
-                properties := Props, payload := Payload}) ->
+                properties := Props, payload := Payload}, Mountpoint) ->
     %% published from remote node over a MQTT connection
-    emqx_message:set_headers(Props,
+    set_headers(Props,
         emqx_message:set_flags(#{dup => Dup, retain => Retain},
-            emqx_message:make(bridge, QoS, Topic, Payload))).
+            emqx_message:make(bridge, QoS, topic(Mountpoint, Topic), Payload))).
 
+set_headers(undefined, Msg) ->
+    Msg;
+set_headers(Val, Msg) ->
+    emqx_message:set_headers(Val, Msg).
+topic(undefined, Topic) -> Topic;
 topic(Prefix, Topic) -> emqx_topic:prepend(Prefix, Topic).
