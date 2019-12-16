@@ -22,8 +22,8 @@
 
 %% behaviour callbacks
 -export([ start/1
-        , send/3
-        , stop/2
+        , send/2
+        , stop/1
         ]).
 
 %% optional behaviour callbacks
@@ -36,27 +36,21 @@
 -define(ACK_REF(ClientPid, PktId), {ClientPid, PktId}).
 
 %% Messages towards ack collector process
--define(RANGE(Min, Max), {Min, Max}).
 -define(REF_IDS(Ref, Ids), {Ref, Ids}).
--define(SENT(RefIds), {sent, RefIds}).
--define(ACKED(AnyPktId), {acked, AnyPktId}).
--define(STOP(Ref), {stop, Ref}).
 
 %%--------------------------------------------------------------------
 %% emqx_bridge_connect callbacks
 %%--------------------------------------------------------------------
 
-start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
-    Ref = make_ref(),
+start(Config = #{address := Address}) ->
     Parent = self(),
-    AckCollector = spawn_link(fun() -> ack_collector(Parent, Ref) end),
-    Handlers = make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics),
+    Mountpoint = maps:get(receive_mountpoint, Config, undefined),
+    Handlers = make_hdlr(Parent, Mountpoint),
     {Host, Port} = case string:tokens(Address, ":") of
                        [H] -> {H, 1883};
                        [H, P] -> {H, list_to_integer(P)}
                    end,
     ClientConfig = Config#{msg_handler => Handlers,
-                           owner => AckCollector,
                            host => Host,
                            port => Port
                           },
@@ -66,24 +60,22 @@ start(Config = #{address := Address, if_record_metrics := IfRecordMetrics}) ->
                 {ok, _} ->
                     try
                         subscribe_remote_topics(Pid, maps:get(subscriptions, Config, [])),
-                        {ok, Ref, #{ack_collector => AckCollector,
-                                    client_pid => Pid}}
+                        {ok, #{client_pid => Pid}}
                     catch
                         throw : Reason ->
-                            ok = stop(AckCollector, Pid),
+                            ok = stop(#{client_pid => Pid}),
                             {error, Reason}
                     end;
                 {error, Reason} ->
-                    ok = stop(Ref, #{ack_collector => AckCollector, client_pid => Pid}),
+                    ok = stop(#{client_pid => Pid}),
                     {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
     end.
 
-stop(Ref, #{ack_collector := AckCollector, client_pid := Pid}) ->
+stop(#{client_pid := Pid}) ->
     safe_stop(Pid, fun() -> emqtt:stop(Pid) end, 1000),
-    safe_stop(AckCollector, fun() -> AckCollector ! ?STOP(Ref) end, 1000),
     ok.
 
 ensure_subscribed(#{client_pid := Pid}, Topic, QoS) when is_pid(Pid) ->
@@ -121,76 +113,35 @@ safe_stop(Pid, StopF, Timeout) ->
             exit(Pid, kill)
     end.
 
-send(Conn, Batch, IfRecordMetrics) ->
-    send(Conn, Batch, [], IfRecordMetrics).
-
-send(#{client_pid := ClientPid, ack_collector := AckCollector} = Conn, [Msg | Rest], Acc, IfRecordMetrics) ->
+send(Conn, Msgs) ->
+    send(Conn, Msgs, undefined).
+send(_Conn, [], PktId) ->
+    {ok, PktId};
+send(#{client_pid := ClientPid} = Conn, [Msg | Rest], _PktId) ->
     case emqtt:publish(ClientPid, Msg) of
-        {ok, PktId} when Rest =:= [] ->
-            %% last one sent
-            Ref = make_ref(),
-            AckCollector ! ?SENT(?REF_IDS(Ref, lists:reverse([PktId | Acc]))),
-            {ok, Ref};
         {ok, PktId} ->
-            send(Conn, Rest, [PktId | Acc], IfRecordMetrics);
+            send(Conn, Rest, PktId);
         {error, Reason} ->
             %% NOTE: There is no partial sucess of a batch and recover from the middle
             %% only to retry all messages in one batch
             {error, Reason}
     end.
 
-ack_collector(Parent, ConnRef) ->
-    ack_collector(Parent, ConnRef, queue:new(), []).
-
-ack_collector(Parent, ConnRef, Acked, Sent) ->
-    {NewAcked, NewSent} =
-        receive
-            ?STOP(ConnRef) ->
-                exit(normal);
-            ?ACKED(PktId) ->
-                match_acks(Parent, queue:in(PktId, Acked), Sent);
-            ?SENT(RefIds) ->
-                %% this message only happens per-batch, hence ++ is ok
-                match_acks(Parent, Acked, Sent ++ [RefIds])
-        after
-            200 ->
-                {Acked, Sent}
-        end,
-   ack_collector(Parent, ConnRef, NewAcked, NewSent).
-
-match_acks(_Parent, Acked, []) -> {Acked, []};
-match_acks(Parent, Acked, Sent) ->
-    match_acks_1(Parent, queue:out(Acked), Sent).
-
-match_acks_1(_Parent, {empty, Empty}, Sent) -> {Empty, Sent};
-match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId]) | Sent]) ->
-    %% batch finished
-    ok = emqx_bridge_worker:handle_ack(Parent, Ref),
-    match_acks(Parent, Acked, Sent);
-match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, [PktId | RestIds]) | Sent]) ->
-    %% one message finished, but not the whole batch
-    match_acks(Parent, Acked, [?REF_IDS(Ref, RestIds) | Sent]);
-match_acks_1(Parent, {{value, PktId}, Acked}, [?REF_IDS(Ref, PktIds) | Sent]) ->
-    %% one message finished in the case that the order of acked messages
-    %% is not consistent with the sent messages.
-    match_acks(Parent, Acked, [?REF_IDS(Ref, lists:delete(PktId, PktIds)) | Sent]).
-
-%% When puback for QoS-1 message is received from remote MQTT broker
-%% NOTE: no support for QoS-2
-handle_puback(AckCollector, #{packet_id := PktId, reason_code := RC}) ->
+handle_puback(Parent, #{packet_id := PktId, reason_code := RC}) ->
     RC =:= ?RC_SUCCESS orelse error({puback_error_code, RC}),
-    AckCollector ! ?ACKED(PktId),
+    Parent ! {batch_ack, PktId},
     ok.
 
-%% Message published from remote broker. Import to local broker.
-import_msg(Msg, IfRecordMetrics) ->
-    %% auto-ack should be enabled in emqtt, hence dummy ack-fun.
-    emqx_bridge_worker:import_batch([Msg], _AckFun = fun() -> ok end, IfRecordMetrics).
+handle_publish(Msg, Mountpoint) ->
+    emqx_broker:publish(emqx_bridge_msg:to_broker_msg(Msg, Mountpoint)).
 
-make_hdlr(Parent, AckCollector, Ref, IfRecordMetrics) ->
-    #{puback => fun(Ack) -> handle_puback(AckCollector, Ack) end,
-      publish => fun(Msg) -> import_msg(Msg, IfRecordMetrics) end,
-      disconnected => fun(Reason) -> Parent ! {disconnected, Ref, Reason}, ok end
+handle_disconnected(Parent, Reason) ->
+    Parent ! {disconnected, self(), Reason}.
+
+make_hdlr(Parent, Mountpoint) ->
+    #{puback => fun(Ack) -> handle_puback(Parent, Ack) end,
+      publish => fun(Msg) -> handle_publish(Msg, Mountpoint) end,
+      disconnected => fun(Reason) -> handle_disconnected(Parent, Reason) end
      }.
 
 subscribe_remote_topics(ClientPid, Subscriptions) ->
