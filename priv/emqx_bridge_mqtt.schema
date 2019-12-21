@@ -84,7 +84,7 @@
 
 {mapping, "bridge.mqtt.$name.keepalive", "emqx_bridge_mqtt.bridges", [
   {default, "10s"},
-  {datatype, {duration, ms}}
+  {datatype, {duration, s}}
 ]}.
 
 {mapping, "bridge.mqtt.$name.tls_versions", "emqx_bridge_mqtt.bridges", [
