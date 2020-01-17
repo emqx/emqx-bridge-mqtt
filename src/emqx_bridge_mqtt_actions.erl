@@ -384,9 +384,11 @@ on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
 
 on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
-    fun(Msg, _Env = #{id := Id, flags := Flags, topic := Topic, timestamp := TimeStamp}) ->
+    fun(Msg, _Env = #{id := Id, clientid := From, flags := Flags,
+                      topic := Topic, timestamp := TimeStamp}) ->
             BrokerMsg = #message{id = Id,
                                  qos = 1,
+                                 from = From,
                                  flags = Flags,
                                  topic = Topic,
                                  payload = jsx:encode(Msg),
