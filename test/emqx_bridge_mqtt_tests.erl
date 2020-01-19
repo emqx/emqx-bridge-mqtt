@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,35 +23,25 @@ send_and_ack_test() ->
     %% delegate from gen_rpc to rpc for unit test
     meck:new(emqtt, [passthrough, no_history]),
     meck:expect(emqtt, start_link, 1,
-                fun(#{msg_handler := Hdlr}) ->
-                        {ok, spawn_link(fun() -> fake_client(Hdlr) end)}
+                fun(_) ->
+                        {ok, spawn_link(fun() -> ok end)}
                 end),
     meck:expect(emqtt, connect, 1, {ok, dummy}),
     meck:expect(emqtt, stop, 1,
                 fun(Pid) -> Pid ! stop end),
     meck:expect(emqtt, publish, 2,
                 fun(Client, Msg) ->
-                        Client ! {publish, Msg},
-                        {ok, Msg} %% as packet id
+                    Client ! {publish, Msg},
+                    {ok, Msg} %% as packet id
                 end),
     try
-        Max = 100,
+        Max = 1,
         Batch = lists:seq(1, Max),
-        {ok, Ref, Conn} = emqx_bridge_mqtt:start(#{address => "127.0.0.1:1883", if_record_metrics => true}),
-        %% return last packet id as batch reference
-        {ok, AckRef} = emqx_bridge_mqtt:send(Conn, Batch, true),
-        %% expect batch ack
-        receive {batch_ack, AckRef} -> ok end,
-        ok = emqx_bridge_mqtt:stop(Ref, Conn)
+        {ok, Conn} = emqx_bridge_mqtt:start(#{address => "127.0.0.1:1883"}),
+    %     %% return last packet id as batch reference
+        {ok, _AckRef} = emqx_bridge_mqtt:send(Conn, Batch),
+
+        ok = emqx_bridge_mqtt:stop(Conn)
     after
         meck:unload(emqtt)
-    end.
-
-fake_client(#{puback := PubAckCallback} = Hdlr) ->
-    receive
-        {publish, PktId} ->
-            PubAckCallback(#{packet_id => PktId, reason_code => ?RC_SUCCESS}),
-            fake_client(Hdlr);
-        stop ->
-            exit(normal)
     end.

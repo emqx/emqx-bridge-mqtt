@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,13 +22,12 @@
 
 %% behaviour callbacks
 -export([ start/1
-        , send/3
-        , stop/2
+        , send/2
+        , stop/1
         ]).
 
 %% Internal exports
--export([ handle_send/2
-        , handle_ack/2
+-export([ handle_send/1
         , heartbeat/2
         ]).
 
@@ -43,12 +42,12 @@ start(#{address := Remote}) ->
     case poke(Remote) of
         ok ->
             Pid = proc_lib:spawn_link(?MODULE, heartbeat, [self(), Remote]),
-            {ok, Pid, Remote};
+            {ok, #{client_pid => Pid, address => Remote}};
         Error ->
             Error
     end.
 
-stop(Pid, _Remote) when is_pid(Pid) ->
+stop(#{client_pid := Pid}) when is_pid(Pid) ->
     Ref = erlang:monitor(process, Pid),
     unlink(Pid),
     Pid ! stop,
@@ -62,28 +61,20 @@ stop(Pid, _Remote) when is_pid(Pid) ->
     ok.
 
 %% @doc Callback for `emqx_bridge_connect' behaviour
--spec send(node(), batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
-send(Remote, Batch, _IfRecordMetric) ->
-    case ?RPC:call(Remote, ?MODULE, handle_send, [Batch, false]) of
-        {ok, Ref} ->
-            emqx_bridge_worker:handle_ack(self(), Ref),
+-spec send(node(), batch()) -> {ok, ack_ref()} | {error, any()}.
+send(#{address := Remote}, Batch) ->
+    case ?RPC:call(Remote, ?MODULE, handle_send, [Batch]) of
+        ok ->
+            Ref = make_ref(),
+            self() ! {batch_ack, Ref},
             {ok, Ref};
         {badrpc, Reason} -> {error, Reason}
     end.
 
 %% @doc Handle send on receiver side.
--spec handle_send(batch(), boolean()) -> {ok, ack_ref()} | {error, any()}.
-handle_send(Batch, IfRecordMetric) ->
-    Ref = make_ref(),
-    AckFun = fun() -> ok end,
-    case emqx_bridge_worker:import_batch(Batch, AckFun, IfRecordMetric) of
-        ok -> {ok, Ref};
-        Error -> Error
-    end.
-
-%% @doc Handle batch ack in sender node.
-handle_ack(SenderPid, Ref) ->
-    ok = emqx_bridge_worker:handle_ack(SenderPid, Ref).
+-spec handle_send(batch()) -> ok.
+handle_send(Batch) ->
+    lists:foreach(fun(Msg) -> emqx_broker:publish(Msg) end, Batch).
 
 %% @hidden Heartbeat loop
 heartbeat(Parent, RemoteNode) ->

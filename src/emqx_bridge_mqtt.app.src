@@ -3,7 +3,7 @@
   {vsn, "git"},
   {modules, []},
   {registered, []},
-  {applications, [kernel,stdlib,emqtt]},
+  {applications, [kernel,stdlib,replayq,emqtt]},
   {mod, {emqx_bridge_mqtt_app, []}},
   {env, []},
   {licenses, ["Apache-2.0"]},
