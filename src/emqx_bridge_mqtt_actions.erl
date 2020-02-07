@@ -391,7 +391,7 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
                                  from = From,
                                  flags = Flags,
                                  topic = Topic,
-                                 payload = jsx:encode(Msg),
+                                 payload = emqx_json:encode(Msg),
                                  timestamp = TimeStamp},
             ecpool:with_client(PoolName, fun(BridgePid) ->
                                              BridgePid ! {deliver, rule_engine, BrokerMsg}
