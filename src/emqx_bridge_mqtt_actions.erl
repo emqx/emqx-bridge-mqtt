@@ -280,18 +280,7 @@
                                      "disconnected">>,
                              zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
                                      "盘队列上"/utf8>>}
-        },
-        payload_tmpl => #{
-                order => 7,
-                type => string,
-                input => textarea,
-                required => false,
-                default => <<"">>,
-                title => #{en => <<"Payload Template">>,
-                           zh => <<"消息内容模板"/utf8>>},
-                description => #{en => <<"The payload template, variable interpolation is supported. If using empty template (default), then the payload will be all the available vars in JOSN format">>,
-                                 zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
-            }
+        }
     }).
 
 -define(ACTION_PARAM_RESOURCE, #{
@@ -327,7 +316,18 @@
         for => 'message.publish',
         types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
         create => on_action_create_data_to_mqtt_broker,
-        params => #{'$resource' => ?ACTION_PARAM_RESOURCE},
+        params => #{'$resource' => ?ACTION_PARAM_RESOURCE,
+                    payload_tmpl => #{
+                        order => 1,
+                        type => string,
+                        input => textarea,
+                        required => false,
+                        default => <<"">>,
+                        title => #{en => <<"Payload Template">>,
+                                zh => <<"消息内容模板"/utf8>>},
+                        description => #{en => <<"The payload template, variable interpolation is supported. If using empty template (default), then the payload will be all the available vars in JOSN format">>,
+                                        zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
+                    }},
         title => #{en => <<"Data bridge to MQTT Broker">>,
                    zh => <<"桥接数据到 MQTT Broker"/utf8>>},
         description => #{en => <<"Bridge Data to MQTT Broker">>,
