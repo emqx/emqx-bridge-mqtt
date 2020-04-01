@@ -280,7 +280,18 @@
                                      "disconnected">>,
                              zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
                                      "盘队列上"/utf8>>}
-        }
+        },
+        payload_tmpl => #{
+                order => 7,
+                type => string,
+                input => textarea,
+                required => false,
+                default => <<"">>,
+                title => #{en => <<"Payload Template">>,
+                           zh => <<"消息内容模板"/utf8>>},
+                description => #{en => <<"The payload template, variable interpolation is supported. If using empty template (default), then the payload will be all the available vars in JOSN format">>,
+                                 zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
+            }
     }).
 
 -define(ACTION_PARAM_RESOURCE, #{
@@ -382,8 +393,9 @@ on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
                 error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
         end.
 
-on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
+on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName, <<"payload_tmpl">> := PayloadTmpl}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
+    PayloadTks = emqx_rule_utils:preproc_tmpl(PayloadTmpl),
     fun(Msg, _Env = #{id := Id, clientid := From, flags := Flags,
                       topic := Topic, timestamp := TimeStamp}) ->
             BrokerMsg = #message{id = Id,
@@ -391,12 +403,17 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName}) ->
                                  from = From,
                                  flags = Flags,
                                  topic = Topic,
-                                 payload = emqx_json:encode(Msg),
+                                 payload = format_data(PayloadTks, Msg),
                                  timestamp = TimeStamp},
             ecpool:with_client(PoolName, fun(BridgePid) ->
                                              BridgePid ! {deliver, rule_engine, BrokerMsg}
                                          end)
     end.
+
+format_data([], Msg) ->
+     emqx_json:encode(Msg);
+format_data(Tokens, Msg) ->
+    emqx_rule_utils:proc_tmpl(Tokens, Msg).
 
 tls_versions() ->
     ['tlsv1.2','tlsv1.1', tlsv1].
