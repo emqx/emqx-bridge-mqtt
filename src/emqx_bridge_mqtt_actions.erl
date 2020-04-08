@@ -440,6 +440,8 @@ connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name :
     Options0 = case DiskCache of
                    true ->
                        DataDir = filename:join([emqx:get_env(data_dir),
+                                                replayq,
+                                                node(),
                                                 atom_to_list(Pool),
                                                 integer_to_list(Id)
                                                ]),

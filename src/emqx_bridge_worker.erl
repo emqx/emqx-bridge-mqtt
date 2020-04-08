@@ -269,11 +269,14 @@ init_opts(Config) ->
 open_replayq(Config) ->
     QCfg = maps:get(queue, Config, #{}),
     Dir = maps:get(replayq_dir, QCfg, undefined),
+    Name = maps:get(name, Config),
     SegBytes = maps:get(replayq_seg_bytes, QCfg, ?DEFAULT_SEG_BYTES),
     MaxTotalSize = maps:get(max_total_size, QCfg, ?DEFAULT_MAX_TOTAL_SIZE),
     QueueConfig = case Dir =:= undefined orelse Dir =:= "" of
         true -> #{mem_only => true};
-        false -> #{dir => Dir, seg_bytes => SegBytes, max_total_size => MaxTotalSize}
+        false -> #{dir => filename:join([Dir, node(), Name]),
+                   seg_bytes => SegBytes,
+                   max_total_size => MaxTotalSize}
     end,
     replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
                               marshaller => fun msg_marshaller/1}).
