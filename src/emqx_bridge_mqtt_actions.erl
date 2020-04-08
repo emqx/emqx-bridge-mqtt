@@ -64,7 +64,7 @@
             order => 3,
             type => string,
             required => false,
-            default => <<"on">>,
+            default => <<"off">>,
             enum => [<<"on">>, <<"off">>],
             title => #{en => <<"Disk Cache">>,
                        zh => <<"磁盘缓存"/utf8>>},
