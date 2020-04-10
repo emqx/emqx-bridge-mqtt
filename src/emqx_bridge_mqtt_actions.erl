@@ -413,6 +413,7 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName,
 
 format_data([], Msg) ->
     emqx_json:encode(Msg);
+
 format_data(Tokens, Msg) ->
     emqx_rule_utils:proc_tmpl(Tokens, Msg).
 
