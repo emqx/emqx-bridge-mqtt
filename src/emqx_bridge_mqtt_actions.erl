@@ -271,7 +271,7 @@
             order => 6,
             type => string,
             required => false,
-            default => <<"on">>,
+            default => <<"off">>,
             enum => [<<"on">>, <<"off">>],
             title => #{en => <<"Disk Cache">>,
                        zh => <<"磁盘缓存"/utf8>>},
@@ -393,7 +393,8 @@ on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
                 error({{?RESOURCE_TYPE_MQTT, ResId}, destroy_failed})
         end.
 
-on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName, <<"payload_tmpl">> := PayloadTmpl}) ->
+on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName,
+                                            <<"payload_tmpl">> := PayloadTmpl}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
     PayloadTks = emqx_rule_utils:preproc_tmpl(PayloadTmpl),
     fun(Msg, _Env = #{id := Id, clientid := From, flags := Flags,
@@ -411,7 +412,8 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName, <<"payload_t
     end.
 
 format_data([], Msg) ->
-     emqx_json:encode(Msg);
+    emqx_json:encode(Msg);
+
 format_data(Tokens, Msg) ->
     emqx_rule_utils:proc_tmpl(Tokens, Msg).
 
@@ -445,18 +447,16 @@ connect(Options) when is_list(Options) ->
 connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name := Pool}) ->
     Options0 = case DiskCache of
                    true ->
-                       DataDir = filename:join([emqx:get_env(data_dir),
-                                                atom_to_list(Pool),
-                                                integer_to_list(Id)
-                                               ]),
+                       DataDir = filename:join([emqx:get_env(data_dir), replayq]),
                        QueueOption = #{replayq_dir => DataDir},
                        Options#{queue => QueueOption};
                    false ->
                        Options
                end,
     Options1 = maps:without([ecpool_worker_id, pool_name], Options0),
-    emqx_bridge_worker:start_link(Options1).
-
+    emqx_bridge_worker:start_link(name(Pool, Id), Options1).
+name(Pool, Id) ->
+    list_to_atom(atom_to_list(Pool) ++ ":" ++ integer_to_list(Id)).
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
 
