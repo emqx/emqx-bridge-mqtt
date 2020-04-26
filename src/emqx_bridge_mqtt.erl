@@ -52,7 +52,8 @@ start(Config = #{address := Address}) ->
                    end,
     ClientConfig = Config#{msg_handler => Handlers,
                            host => Host,
-                           port => Port
+                           port => Port,
+                           force_ping => true
                           },
     case emqtt:start_link(ClientConfig) of
         {ok, Pid} ->
