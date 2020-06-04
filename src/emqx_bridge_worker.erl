@@ -584,7 +584,7 @@ id(Pid) when is_pid(Pid) -> Pid;
 id(Name) -> name(Name).
 
 register_metrics() ->
-    lists:foreach(fun emqx_metrics:new/1,
+    lists:foreach(fun emqx_metrics:ensure/1,
                   ['bridge.mqtt.message_sent',
                    'bridge.mqtt.message_received'
                   ]).
