@@ -74,37 +74,57 @@
                              zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
                                      "盘队列上"/utf8>>}
         },
-        clientid => #{
+        pool_size => #{
             order => 4,
+            type => number,
+            required => true,
+            default => 8,
+            title => #{en => <<"Pool Size">>,
+                       zh => <<"连接池大小"/utf8>>},
+            description => #{en => <<"MQTT Connection Pool Size">>,
+                             zh => <<"连接池大小"/utf8>>}
+        },
+        clientid => #{
+            order => 5,
             type => string,
             required => false,
-            default => <<"bridge_aws">>,
-            title => #{en => <<"Client Id">>,
+            default => <<"client">>,
+            title => #{en => <<"ClientId">>,
                        zh => <<"客户端 Id"/utf8>>},
-            description => #{en => <<"Client Id for connecting to remote MQTT broker">>,
-                             zh => <<"远程 Broker 的 Client Id"/utf8>>}
+            description => #{en => <<"ClientId for connecting to remote MQTT broker">>,
+                             zh => <<"连接远程 Broker 的 ClientId"/utf8>>}
+        },
+        append => #{
+            order => 6,
+            type => boolean,
+            required => false,
+            default => true,
+            title => #{en => <<"Append GUID">>,
+                       zh => <<"附加 GUID"/utf8>>},
+            description => #{en => <<"Append GUID to MQTT ClientId?">>,
+                             zh => <<"是否将GUID附加到 MQTT ClientId 后"/utf8>>}
         },
         username => #{
-            order => 5,
+            order => 7,
             type => string,
             required => false,
             default => <<"user">>,
             title => #{en => <<"Username">>, zh => <<"用户名"/utf8>>},
             description => #{en => <<"Username for connecting to remote MQTT Broker">>,
-                             zh => <<"远程 Broker 的用户名"/utf8>>}
+                             zh => <<"连接远程 Broker 的用户名"/utf8>>}
         },
         password => #{
-            order => 6,
+            order => 8,
             type => string,
             required => false,
             default => <<"passwd">>,
             title => #{en => <<"Password">>,
                        zh => <<"密码"/utf8>>},
             description => #{en => <<"Password for connecting to remote MQTT Broker">>,
-                             zh => <<"远程 Broker 的密码"/utf8>>}
+                             zh => <<"连接远程 Broker 的密码"/utf8>>}
         },
         mountpoint => #{
-            order => 7,
+            order => 9,
             type => string,
             required => true,
             default => <<"bridge/aws/${node}/">>,
@@ -120,7 +140,7 @@
             }
         },
         keepalive => #{
-            order => 8,
+            order => 10,
             type => string,
             required => true,
             default => <<"60s">> ,
@@ -130,7 +150,7 @@
                              zh => <<"心跳间隔"/utf8>>}
         },
         reconnect_interval => #{
-            order => 9,
+            order => 11,
             type => string,
             required => false,
             default => <<"30s">>,
@@ -140,7 +160,7 @@
                              zh => <<"重连间隔"/utf8>>}
         },
         retry_interval => #{
-            order => 10,
+            order => 12,
             type => string,
             required => false,
             default => <<"20s">>,
@@ -150,7 +170,7 @@
                              zh => <<"消息重传间隔"/utf8>>}
         },
         bridge_mode => #{
-            order => 11,
+            order => 13,
             type => boolean,
             required => false,
             default => true,
@@ -160,7 +180,7 @@
                              zh => <<"MQTT 连接是否为桥接模式"/utf8>>}
         },
         ssl => #{
-            order => 12,
+            order => 14,
             type => string,
             required => true,
             default => <<"off">>,
@@ -171,7 +191,7 @@
                              zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
         },
         cacertfile => #{
-            order => 13,
+            order => 15,
             type => string,
             required => false,
             default => <<"etc/certs/cacert.pem">>,
@@ -181,7 +201,7 @@
                              zh => <<"CA 证书路径"/utf8>>}
         },
         certfile => #{
-            order => 14,
+            order => 16,
             type => string,
             required => false,
             default => <<"etc/certs/client-cert.pem">>,
@@ -191,7 +211,7 @@
                              zh => <<"客户端证书路径"/utf8>>}
         },
         keyfile => #{
-            order => 15,
+            order => 17,
             type => string,
             required => false,
             default => <<"etc/certs/client-key.pem">>,
@@ -201,7 +221,7 @@
                              zh => <<"客户端密钥路径"/utf8>>}
         },
         ciphers => #{
-            order => 16,
+            order => 18,
             type => string,
             required => false,
             default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
@@ -453,8 +473,19 @@ connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name :
                    false ->
                        Options
                end,
-    Options1 = maps:without([ecpool_worker_id, pool_name], Options0),
-    emqx_bridge_worker:start_link(name(Pool, Id), Options1).
+    Options1 = case maps:is_key(append, Options0) of
+        false -> Options0;
+        true ->
+            case maps:get(append, Options0, false) of
+                true ->
+                    ClientId = lists:concat([str(maps:get(clientid, Options0)), "_", str(emqx_guid:to_hexstr(emqx_guid:gen()))]),
+                    Options0#{clientid => ClientId};
+                false ->
+                    Options0
+            end
+    end,
+    Options2 = maps:without([ecpool_worker_id, pool_name, append], Options1),
+    emqx_bridge_worker:start_link(name(Pool, Id), Options2).
 name(Pool, Id) ->
     list_to_atom(atom_to_list(Pool) ++ ":" ++ integer_to_list(Id)).
 pool_name(ResId) ->
@@ -482,6 +513,7 @@ options(Options, PoolName) ->
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
                   {clientid, str(Get(<<"clientid">>))},
+                  {append, Get(<<"append">>)},
                   {connect_module, emqx_bridge_mqtt},
                   {keepalive, cuttlefish_duration:parse(str(Get(<<"keepalive">>)), s)},
                   {username, str(Get(<<"username">>))},
