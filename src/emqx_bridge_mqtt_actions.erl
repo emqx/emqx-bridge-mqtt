@@ -36,6 +36,7 @@
 -export([on_action_create_data_to_mqtt_broker/2]).
 
 -define(RESOURCE_TYPE_MQTT, 'bridge_mqtt').
+-define(RESOURCE_TYPE_MQTT_SUB, 'bridge_mqtt_sub').
 -define(RESOURCE_TYPE_RPC, 'bridge_rpc').
 
 -define(RESOURCE_CONFIG_SPEC_MQTT, #{
@@ -49,33 +50,8 @@
             description => #{en => <<"The MQTT Remote Address">>,
                              zh => <<"远程 MQTT Broker 的地址"/utf8>>}
         },
-        proto_ver => #{
-            order => 2,
-            type => string,
-            required => false,
-            default => <<"mqttv4">>,
-            enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
-            title => #{en => <<"Protocol Version">>,
-                       zh => <<"协议版本"/utf8>>},
-            description => #{en => <<"MQTTT Protocol version">>,
-                             zh => <<"MQTT 协议版本"/utf8>>}
-        },
-        disk_cache => #{
-            order => 3,
-            type => string,
-            required => false,
-            default => <<"off">>,
-            enum => [<<"on">>, <<"off">>],
-            title => #{en => <<"Disk Cache">>,
-                       zh => <<"磁盘缓存"/utf8>>},
-            description => #{en => <<"The flag which determines whether messages"
-                                     "can be cached on local disk when bridge is"
-                                     "disconnected">>,
-                             zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
-                                     "盘队列上"/utf8>>}
-        },
         pool_size => #{
-            order => 4,
+            order => 2,
             type => number,
             required => true,
             default => 8,
@@ -85,9 +61,9 @@
                              zh => <<"连接池大小"/utf8>>}
         },
         clientid => #{
-            order => 5,
+            order => 3,
             type => string,
-            required => false,
+            required => true,
             default => <<"client">>,
             title => #{en => <<"ClientId">>,
                        zh => <<"客户端 Id"/utf8>>},
@@ -95,7 +71,7 @@
                              zh => <<"连接远程 Broker 的 ClientId"/utf8>>}
         },
         append => #{
-            order => 6,
+            order => 4,
             type => boolean,
             required => false,
             default => true,
@@ -105,7 +81,7 @@
                              zh => <<"是否将GUID附加到 MQTT ClientId 后"/utf8>>}
         },
         username => #{
-            order => 7,
+            order => 5,
             type => string,
             required => false,
             default => <<"user">>,
@@ -114,7 +90,7 @@
                              zh => <<"连接远程 Broker 的用户名"/utf8>>}
         },
         password => #{
-            order => 8,
+            order => 6,
             type => string,
             required => false,
             default => <<"passwd">>,
@@ -124,7 +100,7 @@
                              zh => <<"连接远程 Broker 的密码"/utf8>>}
         },
         mountpoint => #{
-            order => 9,
+            order => 7,
             type => string,
             required => false,
             default => <<"bridge/aws/${node}/">>,
@@ -139,10 +115,35 @@
                         "会变换为 `bridge/aws/${node}/topic1`"/utf8>>
             }
         },
+        disk_cache => #{
+            order => 8,
+            type => string,
+            required => false,
+            default => <<"off">>,
+            enum => [<<"on">>, <<"off">>],
+            title => #{en => <<"Disk Cache">>,
+                       zh => <<"磁盘缓存"/utf8>>},
+            description => #{en => <<"The flag which determines whether messages"
+                                     "can be cached on local disk when bridge is"
+                                     "disconnected">>,
+                             zh => <<"当桥接断开时用于控制是否将消息缓存到本地磁"
+                                     "盘队列上"/utf8>>}
+        },
+        proto_ver => #{
+            order => 9,
+            type => string,
+            required => false,
+            default => <<"mqttv4">>,
+            enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
+            title => #{en => <<"Protocol Version">>,
+                       zh => <<"协议版本"/utf8>>},
+            description => #{en => <<"MQTTT Protocol version">>,
+                             zh => <<"MQTT 协议版本"/utf8>>}
+        },
         keepalive => #{
             order => 10,
             type => string,
-            required => true,
+            required => false,
             default => <<"60s">> ,
             title => #{en => <<"Keepalive">>,
                        zh => <<"心跳间隔"/utf8>>},
@@ -173,7 +174,7 @@
             order => 13,
             type => boolean,
             required => false,
-            default => true,
+            default => false,
             title => #{en => <<"Bridge Mode">>,
                        zh => <<"桥接模式"/utf8>>},
             description => #{en => <<"Bridge mode for MQTT bridge connection">>,
@@ -182,7 +183,7 @@
         ssl => #{
             order => 14,
             type => string,
-            required => true,
+            required => false,
             default => <<"off">>,
             enum => [<<"on">>, <<"off">>],
             title => #{en => <<"Bridge SSL">>,
@@ -241,6 +242,171 @@
                              zh => <<"SSL 加密算法"/utf8>>}
         }
     }).
+
+
+-define(RESOURCE_CONFIG_SPEC_MQTT_SUB, #{
+        address => #{
+            order => 1,
+            type => string,
+            required => true,
+            default => <<"127.0.0.1:1883">>,
+            title => #{en => <<" Broker Address">>,
+                       zh => <<"远程 broker 地址"/utf8>>},
+            description => #{en => <<"The MQTT Remote Address">>,
+                             zh => <<"远程 MQTT Broker 的地址"/utf8>>}
+        },
+        pool_size => #{
+            order => 2,
+            type => number,
+            required => true,
+            default => 8,
+            title => #{en => <<"Pool Size">>,
+                       zh => <<"连接池大小"/utf8>>},
+            description => #{en => <<"MQTT Connection Pool Size">>,
+                             zh => <<"连接池大小"/utf8>>}
+        },
+        clientid => #{
+            order => 3,
+            type => string,
+            required => true,
+            default => <<"client">>,
+            title => #{en => <<"ClientId">>,
+                       zh => <<"客户端 Id"/utf8>>},
+            description => #{en => <<"ClientId for connecting to remote MQTT broker">>,
+                             zh => <<"连接远程 Broker 的 ClientId"/utf8>>}
+        },
+        append => #{
+            order => 4,
+            type => boolean,
+            required => true,
+            default => true,
+            title => #{en => <<"Append GUID">>,
+                       zh => <<"附加 GUID"/utf8>>},
+            description => #{en => <<"Append GUID to MQTT ClientId?">>,
+                             zh => <<"是否将GUID附加到 MQTT ClientId 后"/utf8>>}
+        },
+        username => #{
+            order => 5,
+            type => string,
+            required => false,
+            default => <<"user">>,
+            title => #{en => <<"Username">>, zh => <<"用户名"/utf8>>},
+            description => #{en => <<"Username for connecting to remote MQTT Broker">>,
+                             zh => <<"连接远程 Broker 的用户名"/utf8>>}
+        },
+        password => #{
+            order => 6,
+            type => string,
+            required => false,
+            default => <<"passwd">>,
+            title => #{en => <<"Password">>,
+                       zh => <<"密码"/utf8>>},
+            description => #{en => <<"Password for connecting to remote MQTT Broker">>,
+                             zh => <<"连接远程 Broker 的密码"/utf8>>}
+        },
+        topic => #{
+            order => 7,
+            type => string,
+            required => true,
+            title => #{en => <<"MQTT Topic">>,
+                       zh => <<"MQTT Topic"/utf8>>},
+            description => #{en => <<"subscribe to remote Broker topic, If using connection pool, please use shared subscription">>,
+                             zh => <<"订阅远程 Broker 主题, 如果使用连接池，请使用共享订阅"/utf8>>}
+        },
+        qos => #{
+            order => 8,
+            type => number,
+            required => true,
+            default => 0,
+            title => #{en => <<"MQTT QoS">>,
+                       zh => <<"MQTT 消息质量级别"/utf8>>},
+            description => #{en => <<"Subscribe to remote Broker message QoS">>,
+                             zh => <<"订阅远程 Broker 消息质量级别"/utf8>>}
+        },
+        proto_ver => #{
+            order => 9,
+            type => string,
+            required => false,
+            default => <<"mqttv4">>,
+            enum => [<<"mqttv3">>, <<"mqttv4">>, <<"mqttv5">>],
+            title => #{en => <<"Protocol Version">>,
+                       zh => <<"协议版本"/utf8>>},
+            description => #{en => <<"MQTTT Protocol version">>,
+                             zh => <<"MQTT 协议版本"/utf8>>}
+        },
+        keepalive => #{
+            order => 10,
+            type => string,
+            required => false,
+            default => <<"60s">> ,
+            title => #{en => <<"Keepalive">>,
+                       zh => <<"心跳间隔"/utf8>>},
+            description => #{en => <<"Keepalive">>,
+                             zh => <<"心跳间隔"/utf8>>}
+        },
+        reconnect_interval => #{
+            order => 11,
+            type => string,
+            required => false,
+            default => <<"30s">>,
+            title => #{en => <<"Reconnect Interval">>,
+                       zh => <<"重连间隔"/utf8>>},
+            description => #{en => <<"Reconnect interval of bridge:<br/>">>,
+                             zh => <<"重连间隔"/utf8>>}
+        },
+        ssl => #{
+            order => 12,
+            type => string,
+            required => false,
+            default => <<"off">>,
+            enum => [<<"on">>, <<"off">>],
+            title => #{en => <<"Bridge SSL">>,
+                       zh => <<"Bridge SSL"/utf8>>},
+            description => #{en => <<"Switch which used to enable ssl connection of the bridge">>,
+                             zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
+        },
+        cacertfile => #{
+            order => 13,
+            type => string,
+            required => false,
+            default => <<"etc/certs/cacert.pem">>,
+            title => #{en => <<"CA certificates">>,
+                       zh => <<"CA 证书"/utf8>>},
+            description => #{en => <<"The file path of the CA certificates">>,
+                             zh => <<"CA 证书路径"/utf8>>}
+        },
+        certfile => #{
+            order => 14,
+            type => string,
+            required => false,
+            default => <<"etc/certs/client-cert.pem">>,
+            title => #{en => <<"SSL Certfile">>,
+                       zh => <<"SSL 客户端证书"/utf8>>},
+            description => #{en => <<"The file path of the client certfile">>,
+                             zh => <<"客户端证书路径"/utf8>>}
+        },
+        keyfile => #{
+            order => 15,
+            type => string,
+            required => false,
+            default => <<"etc/certs/client-key.pem">>,
+            title => #{en => <<"SSL Keyfile">>,
+                       zh => <<"SSL 密钥文件"/utf8>>},
+            description => #{en => <<"The file path of the client keyfile">>,
+                             zh => <<"客户端密钥路径"/utf8>>}
+        },
+        ciphers => #{
+            order => 16,
+            type => string,
+            required => false,
+            default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
+            title => #{en => <<"SSL Ciphers">>,
+                       zh => <<"SSL 加密算法"/utf8>>},
+            description => #{en => <<"SSL Ciphers">>,
+                             zh => <<"SSL 加密算法"/utf8>>}
+        }
+    }).
+
 
 -define(RESOURCE_CONFIG_SPEC_RPC, #{
         address => #{
@@ -329,6 +495,16 @@
         params => ?RESOURCE_CONFIG_SPEC_MQTT,
         title => #{en => <<"MQTT Bridge">>, zh => <<"MQTT Bridge"/utf8>>},
         description => #{en => <<"MQTT Message Bridge">>, zh => <<"MQTT 消息桥接"/utf8>>}
+    }).
+
+-resource_type(#{
+        name => ?RESOURCE_TYPE_MQTT_SUB,
+        create => on_resource_create,
+        status => on_get_resource_status,
+        destroy => on_resource_destroy,
+        params => ?RESOURCE_CONFIG_SPEC_MQTT_SUB,
+        title => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT Subscribe"/utf8>>},
+        description => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT  订阅消息"/utf8>>}
     }).
 
 -resource_type(#{
@@ -428,9 +604,9 @@ on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName,
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
     PayloadTks = emqx_rule_utils:preproc_tmpl(PayloadTmpl),
     fun(Msg, _Env = #{id := Id, clientid := From, flags := Flags,
-                      topic := Topic, timestamp := TimeStamp}) ->
+                      topic := Topic, timestamp := TimeStamp, qos := QoS}) ->
             BrokerMsg = #message{id = Id,
-                                 qos = 1,
+                                 qos = QoS,
                                  from = From,
                                  flags = Flags,
                                  topic = Topic,
@@ -477,7 +653,7 @@ connect(Options) when is_list(Options) ->
 connect(Options = #{disk_cache := DiskCache, ecpool_worker_id := Id, pool_name := Pool}) ->
     Options0 = case DiskCache of
                    true ->
-                       DataDir = filename:join([emqx:get_env(data_dir), replayq]),
+                       DataDir = filename:join([emqx:get_env(data_dir), replayq, Pool, integer_to_list(Id)]),
                        QueueOption = #{replayq_dir => DataDir},
                        Options#{queue => QueueOption};
                    false ->
@@ -507,7 +683,7 @@ options(Options, PoolName) ->
     Address = Get(<<"address">>),
     [{max_inflight_batches, 32},
      {forward_mountpoint, str(Get(<<"mountpoint">>))},
-     {disk_cache, cuttlefish_flag:parse(str(Get(<<"disk_cache">>)))},
+     {disk_cache, cuttlefish_flag:parse(str(GetD(<<"disk_cache">>, "off")))},
      {start_type, auto},
      {reconnect_delay_ms, cuttlefish_duration:parse(str(Get(<<"reconnect_interval">>)), ms)},
      {if_record_metrics, false},
@@ -519,6 +695,11 @@ options(Options, PoolName) ->
                   {connect_module, emqx_bridge_rpc},
                   {batch_size, Get(<<"batch_size">>)}];
              false ->
+                 case Get(<<"topic">>) of
+                     undefined -> [];
+                     Topic ->
+                         [{subscriptions, [{Topic, Get(<<"qos">>)}]}]
+                 end ++
                  [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
@@ -529,7 +710,7 @@ options(Options, PoolName) ->
                   {username, str(Get(<<"username">>))},
                   {password, str(Get(<<"password">>))},
                   {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
-                  {retry_interval, cuttlefish_duration:parse(str(Get(<<"retry_interval">>)), ms)},
+                  {retry_interval, cuttlefish_duration:parse(str(GetD(<<"retry_interval">>, "30s")), ms)},
                   {ssl, cuttlefish_flag:parse(str(Get(<<"ssl">>)))},
                   {ssl_opts, [{versions, tls_versions()},
                               {ciphers, ciphers(Get(<<"ciphers">>))},
