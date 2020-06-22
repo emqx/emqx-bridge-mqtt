@@ -120,6 +120,10 @@ send(_Conn, [], PktId) ->
     {ok, PktId};
 send(#{client_pid := ClientPid} = Conn, [Msg | Rest], _PktId) ->
     case emqtt:publish(ClientPid, Msg) of
+        ok ->
+            Ref = make_ref(),
+            self() ! {batch_ack, Ref},
+            send(Conn, Rest, Ref);
         {ok, PktId} ->
             send(Conn, Rest, PktId);
         {error, Reason} ->
