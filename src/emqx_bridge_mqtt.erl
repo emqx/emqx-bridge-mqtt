@@ -31,6 +31,7 @@
         , ensure_unsubscribed/2
         ]).
 
+-include_lib("emqx/include/logger.hrl").
 -include_lib("emqx/include/emqx_mqtt.hrl").
 
 -define(ACK_REF(ClientPid, PktId), {ClientPid, PktId}).
@@ -132,10 +133,13 @@ send(#{client_pid := ClientPid} = Conn, [Msg | Rest], _PktId) ->
             {error, Reason}
     end.
 
-handle_puback(Parent, #{packet_id := PktId, reason_code := RC}) ->
-    RC =:= ?RC_SUCCESS orelse error({puback_error_code, RC}),
-    Parent ! {batch_ack, PktId},
-    ok.
+
+handle_puback(Parent, #{packet_id := PktId, reason_code := RC})
+  when RC =:= ?RC_SUCCESS;
+       RC =:= ?RC_NO_MATCHING_SUBSCRIBERS ->
+    Parent ! {batch_ack, PktId}, ok;
+handle_puback(_Parent, #{packet_id := PktId, reason_code := RC}) ->
+    ?LOG(warning, "Publish ~p to remote node falied, reason_code: ~p", [PktId, RC]).
 
 handle_publish(Msg, Mountpoint) ->
     emqx_broker:publish(emqx_bridge_msg:to_broker_msg(Msg, Mountpoint)).
