@@ -126,7 +126,7 @@
         mountpoint => #{
             order => 9,
             type => string,
-            required => true,
+            required => false,
             default => <<"bridge/aws/${node}/">>,
             title => #{en => <<"Bridge MountPoint">>,
                        zh => <<"桥接挂载点"/utf8>>},
@@ -256,7 +256,7 @@
         mountpoint => #{
             order => 2,
             type => string,
-            required => true,
+            required => false,
             default => <<"bridge/aws/${node}/">>,
             title => #{en => <<"Bridge MountPoint">>,
                        zh => <<"桥接挂载点"/utf8>>},
