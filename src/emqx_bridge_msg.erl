@@ -48,16 +48,17 @@
 to_export(emqx_bridge_mqtt, Mountpoint,
           #message{topic = Topic,
                    payload = Payload,
-                   flags = Flags
+                   flags = Flags,
+                   qos = QoS
                   }) ->
     Retain = maps:get(retain, Flags, false),
-    #mqtt_msg{qos = ?QOS_1,
+    #mqtt_msg{qos = QoS,
               retain = Retain,
               topic = topic(Mountpoint, Topic),
               payload = Payload};
 to_export(_Module, Mountpoint,
           #message{topic = Topic} = Msg) ->
-    Msg#message{topic = topic(Mountpoint, Topic), qos = 1}.
+    Msg#message{topic = topic(Mountpoint, Topic)}.
 
 %% @doc Make `binary()' in order to make iodata to be persisted on disk.
 -spec to_binary(msg()) -> binary().
