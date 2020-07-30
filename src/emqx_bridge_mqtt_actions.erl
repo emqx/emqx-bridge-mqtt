@@ -583,7 +583,7 @@ test_resource_status(PoolName) ->
                           end
                   end,
     Status = [IsConnected(Worker) || {_WorkerName, Worker} <- ecpool:workers(PoolName)],
-    lists:any(fun(St) -> St =:= true end, Status).
+    length(Status) > 0 andalso lists:all(fun(St) -> St =:= true end, Status).
 
 -spec(on_get_resource_status(ResId::binary(), Params::map()) -> Status::map()).
 on_get_resource_status(_ResId, #{<<"pool">> := PoolName}) ->
