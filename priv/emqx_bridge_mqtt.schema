@@ -11,6 +11,7 @@
 ]}.
 
 {mapping, "bridge.mqtt.$name.bridge_mode", "emqx_bridge_mqtt.bridges", [
+  {default, false},
   {datatype, {enum, [true, false]}}
 ]}.
 
