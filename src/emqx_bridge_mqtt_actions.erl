@@ -520,6 +520,7 @@
 
 -rule_action(#{
         name => data_to_mqtt_broker,
+        category => data_forward,
         for => 'message.publish',
         types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
         create => on_action_create_data_to_mqtt_broker,
