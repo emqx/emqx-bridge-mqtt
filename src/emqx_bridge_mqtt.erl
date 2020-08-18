@@ -56,7 +56,7 @@ start(Config = #{address := Address}) ->
                            port => Port,
                            force_ping => true
                           },
-    case emqtt:start_link(ClientConfig) of
+    case emqtt:start_link(replvar(ClientConfig)) of
         {ok, Pid} ->
             case emqtt:connect(Pid) of
                 {ok, _} ->
@@ -156,3 +156,26 @@ subscribe_remote_topics(ClientPid, Subscriptions) ->
                               Error -> throw(Error)
                           end
                   end, Subscriptions).
+
+%%--------------------------------------------------------------------
+%% Internal funcs
+%%--------------------------------------------------------------------
+
+replvar(Options) ->
+    replvar([clientid], Options).
+
+replvar([], Options) ->
+    Options;
+replvar([Key|More], Options) ->
+    case maps:get(Key, Options, undefined) of
+        undefined ->
+            replvar(More, Options);
+        Val ->
+            replvar(More, maps:put(Key, feedvar(Key, Val, Options), Options))
+    end.
+
+%% ${node} => node()
+feedvar(clientid, ClientId, _) ->
+    iolist_to_binary(re:replace(ClientId, "\\${node}", atom_to_list(node())));
+feedvar(_, Val, _) ->
+    Val.
