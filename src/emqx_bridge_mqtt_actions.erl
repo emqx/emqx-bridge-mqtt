@@ -531,10 +531,10 @@
                         required => false,
                         default => <<"">>,
                         title => #{en => <<"Forward Topic">>,
-                                zh => <<"转发消息主题"/utf8>>},
+                                   zh => <<"转发消息主题"/utf8>>},
                         description => #{en => <<"The topic used when forwarding the message. Defaults to the topic of the bridge message if not provided.">>,
-                                        zh => <<"转发消息时使用的主题。如果未提供，则默认为桥接消息的主题。"/utf8>>}
-                    }},
+                                         zh => <<"转发消息时使用的主题。如果未提供，则默认为桥接消息的主题。"/utf8>>}
+                    },
                     payload_tmpl => #{
                         order => 2,
                         type => string,
@@ -542,10 +542,11 @@
                         required => false,
                         default => <<"">>,
                         title => #{en => <<"Payload Template">>,
-                                zh => <<"消息内容模板"/utf8>>},
+                                   zh => <<"消息内容模板"/utf8>>},
                         description => #{en => <<"The payload template, variable interpolation is supported. If using empty template (default), then the payload will be all the available vars in JOSN format">>,
-                                        zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
-                    }},
+                                         zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
+                    }
+        },
         title => #{en => <<"Data bridge to MQTT Broker">>,
                    zh => <<"桥接数据到 MQTT Broker"/utf8>>},
         description => #{en => <<"Bridge Data to MQTT Broker">>,
