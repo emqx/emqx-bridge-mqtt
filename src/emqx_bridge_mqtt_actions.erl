@@ -525,17 +525,28 @@
         types => [?RESOURCE_TYPE_MQTT, ?RESOURCE_TYPE_RPC],
         create => on_action_create_data_to_mqtt_broker,
         params => #{'$resource' => ?ACTION_PARAM_RESOURCE,
-                    payload_tmpl => #{
+                    forward_topic => #{
                         order => 1,
+                        type => string,
+                        required => false,
+                        default => <<"">>,
+                        title => #{en => <<"Forward Topic">>,
+                                   zh => <<"转发消息主题"/utf8>>},
+                        description => #{en => <<"The topic used when forwarding the message. Defaults to the topic of the bridge message if not provided.">>,
+                                         zh => <<"转发消息时使用的主题。如果未提供，则默认为桥接消息的主题。"/utf8>>}
+                    },
+                    payload_tmpl => #{
+                        order => 2,
                         type => string,
                         input => textarea,
                         required => false,
                         default => <<"">>,
                         title => #{en => <<"Payload Template">>,
-                                zh => <<"消息内容模板"/utf8>>},
+                                   zh => <<"消息内容模板"/utf8>>},
                         description => #{en => <<"The payload template, variable interpolation is supported. If using empty template (default), then the payload will be all the available vars in JOSN format">>,
-                                        zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
-                    }},
+                                         zh => <<"消息内容模板，支持变量。若使用空模板（默认），消息内容为 JSON 格式的所有字段"/utf8>>}
+                    }
+        },
         title => #{en => <<"Data bridge to MQTT Broker">>,
                    zh => <<"桥接数据到 MQTT Broker"/utf8>>},
         description => #{en => <<"Bridge Data to MQTT Broker">>,
@@ -602,16 +613,25 @@ on_resource_destroy(ResId, #{<<"pool">> := PoolName}) ->
         end.
 
 on_action_create_data_to_mqtt_broker(_Id, #{<<"pool">> := PoolName,
+                                            <<"forward_topic">> := ForwardTopic,
                                             <<"payload_tmpl">> := PayloadTmpl}) ->
     ?LOG(info, "Initiating Action ~p.", [?FUNCTION_NAME]),
     PayloadTks = emqx_rule_utils:preproc_tmpl(PayloadTmpl),
+    TopicTks = case ForwardTopic == <<"">> of
+        true -> undefined;
+        false -> emqx_rule_utils:preproc_tmpl(ForwardTopic)
+    end,
     fun(Msg, _Env = #{id := Id, clientid := From, flags := Flags,
                       topic := Topic, timestamp := TimeStamp, qos := QoS}) ->
+            Topic1 = case TopicTks =:= undefined of
+                true -> Topic;
+                false -> emqx_rule_utils:proc_tmpl(TopicTks, Msg)
+            end,
             BrokerMsg = #message{id = Id,
                                  qos = QoS,
                                  from = From,
                                  flags = Flags,
-                                 topic = Topic,
+                                 topic = Topic1,
                                  payload = format_data(PayloadTks, Msg),
                                  timestamp = TimeStamp},
             ecpool:with_client(PoolName, fun(BridgePid) ->
