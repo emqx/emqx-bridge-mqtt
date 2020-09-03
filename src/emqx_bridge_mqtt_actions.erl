@@ -304,28 +304,41 @@
             description => #{en => <<"Password for connecting to remote MQTT Broker">>,
                              zh => <<"连接远程 Broker 的密码"/utf8>>}
         },
-        topic => #{
+        subscription_opts => #{
             order => 7,
-            type => string,
-            required => true,
-            title => #{en => <<"MQTT Topic">>,
-                       zh => <<"MQTT Topic"/utf8>>},
-            description => #{en => <<"subscribe to remote Broker topic, If using connection pool, please use shared subscription">>,
-                             zh => <<"订阅远程 Broker 主题, 如果使用连接池，请使用共享订阅"/utf8>>}
-        },
-        qos => #{
-            order => 8,
-            type => number,
-            required => true,
-            default => 0,
-            enum => [0, 1, 2],
-            title => #{en => <<"MQTT QoS">>,
-                       zh => <<"MQTT 消息质量级别"/utf8>>},
-            description => #{en => <<"Subscribe to remote Broker message QoS">>,
-                             zh => <<"订阅远程 Broker 消息质量级别"/utf8>>}
+            type => array,
+            items => #{
+                type => object,
+                schema => #{
+                    topic => #{
+                        order => 1,
+                        type => string,
+                        default => <<>>,
+                        title => #{en => <<"MQTT Topic">>,
+                                    zh => <<"MQTT 主题"/utf8>>},
+                        description => #{en => <<"MQTT Topic">>,
+                                        zh => <<"MQTT 主题"/utf8>>}
+                    },
+                    qos => #{
+                        order => 2,
+                        type => number,
+                        enum => [0, 1, 2],
+                        default => 0,
+                        title => #{en => <<"MQTT Topic QoS">>,
+                                    zh => <<"MQTT 服务质量"/utf8>>},
+                        description => #{en => <<"MQTT Topic QoS">>,
+                                        zh => <<"MQTT 服务质量"/utf8>>}
+                    }
+                }
+            },
+            default => [],
+            title => #{en => <<"Subscription Opts">>,
+                        zh => <<"订阅选项"/utf8>>},
+            description => #{en => <<"Subscription Opts">>,
+                            zh => <<"订阅选项"/utf8>>}
         },
         proto_ver => #{
-            order => 9,
+            order => 8,
             type => string,
             required => false,
             default => <<"mqttv4">>,
@@ -336,7 +349,7 @@
                              zh => <<"MQTT 协议版本"/utf8>>}
         },
         keepalive => #{
-            order => 10,
+            order => 9,
             type => string,
             required => false,
             default => <<"60s">> ,
@@ -346,7 +359,7 @@
                              zh => <<"心跳间隔"/utf8>>}
         },
         reconnect_interval => #{
-            order => 11,
+            order => 10,
             type => string,
             required => false,
             default => <<"30s">>,
@@ -356,7 +369,7 @@
                              zh => <<"重连间隔"/utf8>>}
         },
         ssl => #{
-            order => 12,
+            order => 11,
             type => string,
             required => false,
             default => <<"off">>,
@@ -367,7 +380,7 @@
                              zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
         },
         cacertfile => #{
-            order => 13,
+            order => 12,
             type => string,
             required => false,
             default => <<"etc/certs/cacert.pem">>,
@@ -377,7 +390,7 @@
                              zh => <<"CA 证书路径"/utf8>>}
         },
         certfile => #{
-            order => 14,
+            order => 13,
             type => string,
             required => false,
             default => <<"etc/certs/client-cert.pem">>,
@@ -387,7 +400,7 @@
                              zh => <<"客户端证书路径"/utf8>>}
         },
         keyfile => #{
-            order => 15,
+            order => 14,
             type => string,
             required => false,
             default => <<"etc/certs/client-key.pem">>,
@@ -397,7 +410,7 @@
                              zh => <<"客户端密钥路径"/utf8>>}
         },
         ciphers => #{
-            order => 16,
+            order => 15,
             type => string,
             required => false,
             default => <<"ECDHE-ECDSA-AES256-GCM-SHA384,ECDHE-RSA-AES256-GCM-SHA384">>,
@@ -717,12 +730,8 @@ options(Options, PoolName) ->
                   {connect_module, emqx_bridge_rpc},
                   {batch_size, Get(<<"batch_size">>)}];
              false ->
-                 case Get(<<"topic">>) of
-                     undefined -> [];
-                     Topic ->
-                         [{subscriptions, [{Topic, Get(<<"qos">>)}]}]
-                 end ++
-                 [{address, binary_to_list(Address)},
+                 [{subscriptions, format_subscriptions(GetD(<<"subscription_opts">>, []))},
+                  {address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
                   {clientid, str(Get(<<"clientid">>))},
@@ -742,6 +751,7 @@ options(Options, PoolName) ->
                              ]}]
          end.
 
+
 mqtt_ver(ProtoVer) ->
     case ProtoVer of
        <<"mqttv3">> -> v3;
@@ -749,3 +759,8 @@ mqtt_ver(ProtoVer) ->
        <<"mqttv5">> -> v5;
        _ -> v4
    end.
+
+format_subscriptions(SubOpts) ->
+    lists:map(fun(Sub) ->
+        {maps:get(<<"topic">>, Sub), maps:get(<<"qos">>, Sub)}
+    end, SubOpts).
