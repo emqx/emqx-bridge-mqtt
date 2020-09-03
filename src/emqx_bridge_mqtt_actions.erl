@@ -730,7 +730,13 @@ options(Options, PoolName) ->
                   {connect_module, emqx_bridge_rpc},
                   {batch_size, Get(<<"batch_size">>)}];
              false ->
-                 [{subscriptions, format_subscriptions(GetD(<<"subscription_opts">>, []))},
+                 Subscriptions = format_subscriptions(GetD(<<"subscription_opts">>, [])),
+                 Subscriptions1 = case Get(<<"topic">>) of
+                     undefined -> Subscriptions;
+                     Topic ->
+                         [{subscriptions, [{Topic, Get(<<"qos">>)}]} | Subscriptions]
+                 end,
+                 [{subscriptions, Subscriptions1},
                   {address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
