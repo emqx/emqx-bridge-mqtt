@@ -736,8 +736,7 @@ options(Options, PoolName) ->
                      Topic ->
                          [{subscriptions, [{Topic, Get(<<"qos">>)}]} | Subscriptions]
                  end,
-                 [{subscriptions, Subscriptions1},
-                  {address, binary_to_list(Address)},
+                 [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
                   {clientid, str(Get(<<"clientid">>))},
@@ -754,7 +753,7 @@ options(Options, PoolName) ->
                               {keyfile, str(Get(<<"keyfile">>))},
                               {certfile, str(Get(<<"certfile">>))},
                               {cacertfile, str(Get(<<"cacertfile">>))}
-                             ]}]
+                             ]}] ++ Subscriptions1
          end.
 
 
