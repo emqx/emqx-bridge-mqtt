@@ -365,7 +365,7 @@
             default => <<"30s">>,
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
-            description => #{en => <<"Reconnect interval of bridge:<br/>">>,
+            description => #{en => <<"Reconnect interval of bridge">>,
                              zh => <<"重连间隔"/utf8>>}
         },
         ssl => #{
@@ -518,7 +518,7 @@
         destroy => on_resource_destroy,
         params => ?RESOURCE_CONFIG_SPEC_MQTT_SUB,
         title => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT Subscribe"/utf8>>},
-        description => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT  订阅消息"/utf8>>}
+        description => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT 订阅消息"/utf8>>}
     }).
 
 -resource_type(#{
