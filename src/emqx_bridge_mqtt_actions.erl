@@ -365,7 +365,7 @@
             default => <<"30s">>,
             title => #{en => <<"Reconnect Interval">>,
                        zh => <<"重连间隔"/utf8>>},
-            description => #{en => <<"Reconnect interval of bridge:<br/>">>,
+            description => #{en => <<"Reconnect interval of bridge">>,
                              zh => <<"重连间隔"/utf8>>}
         },
         ssl => #{
@@ -518,7 +518,7 @@
         destroy => on_resource_destroy,
         params => ?RESOURCE_CONFIG_SPEC_MQTT_SUB,
         title => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT Subscribe"/utf8>>},
-        description => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT  订阅消息"/utf8>>}
+        description => #{en => <<"MQTT Subscribe">>, zh => <<"MQTT 订阅消息"/utf8>>}
     }).
 
 -resource_type(#{
@@ -736,8 +736,7 @@ options(Options, PoolName) ->
                      Topic ->
                          [{subscriptions, [{Topic, Get(<<"qos">>)}]} | Subscriptions]
                  end,
-                 [{subscriptions, Subscriptions1},
-                  {address, binary_to_list(Address)},
+                 [{address, binary_to_list(Address)},
                   {bridge_mode, GetD(<<"bridge_mode">>, true)},
                   {clean_start, true},
                   {clientid, str(Get(<<"clientid">>))},
@@ -754,7 +753,7 @@ options(Options, PoolName) ->
                               {keyfile, str(Get(<<"keyfile">>))},
                               {certfile, str(Get(<<"certfile">>))},
                               {cacertfile, str(Get(<<"cacertfile">>))}
-                             ]}]
+                             ]}] ++ Subscriptions1
          end.
 
 
