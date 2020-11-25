@@ -4,15 +4,13 @@
   [
     {"4.2.1", []},
     {"4.2.0", [
-      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []},
-      {apply, {emqx_rule_engine, load_providers, []}}
+      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []}
     ]}
   ],
   [
     {"4.2.1", []},
     {"4.2.0", [
-      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []},
-      {apply, {emqx_rule_engine, load_providers, []}}
+      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []}
     ]}
   ]
 }.
