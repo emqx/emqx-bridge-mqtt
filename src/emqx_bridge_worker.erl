@@ -98,6 +98,9 @@
         , ensure_subscription_absent/2
         ]).
 
+%% Internal
+-export([msg_marshaller/1]).
+
 -export_type([ config/0
              , batch/0
              , ack_ref/0
@@ -232,13 +235,10 @@ init(Config) ->
     State = init_opts(Config),
     Topics = [iolist_to_binary(T) || T <- Forwards],
     Subs = check_subscriptions(Subscriptions),
-    ConnectConfig = get_conn_cfg(Config),
-    ConnectFun = fun(SubsX) ->
-        emqx_bridge_connect:start(ConnectModule, ConnectConfig#{subscriptions => SubsX})
-    end,
+    ConnectCfg = get_conn_cfg(Config),
     self() ! idle,
     {ok, idle, State#{connect_module => ConnectModule,
-                      connect_fun => ConnectFun,
+                      connect_cfg => ConnectCfg,
                       forwards => Topics,
                       subscriptions => Subs,
                       replayq => Queue
@@ -276,7 +276,7 @@ open_replayq(Config) ->
         false -> #{dir => Dir, seg_bytes => SegBytes, max_total_size => MaxTotalSize}
     end,
     replayq:open(QueueConfig#{sizer => fun emqx_bridge_msg:estimate_size/1,
-                              marshaller => fun msg_marshaller/1}).
+                              marshaller => fun ?MODULE:msg_marshaller/1}).
 
 check_subscriptions(Subscriptions) ->
     lists:map(fun({Topic, QoS}) ->
@@ -293,6 +293,25 @@ get_conn_cfg(Config) ->
                   mountpoint,
                   name
                  ], Config).
+
+code_change({down, Vsn}, State, Data, _Extra)
+    when Vsn =:= "4.2.0";
+         Vsn =:= "4.2.1" ->
+    ConnectModule = maps:get(connect_module, Data),
+    ConnectCfg = maps:get(connect_cfg, Data),
+    ConnectFun = fun(SubsX) ->
+        emqx_bridge_connect:start(ConnectModule, ConnectCfg#{subscriptions => SubsX})
+    end,
+    NData = maps:put(connect_fun, ConnectFun, maps:without([connect_cfg], Data)),
+    {ok, State, NData};
+
+code_change(Vsn, State, Data, _Extra)
+    when Vsn =:= "4.2.0";
+         Vsn =:= "4.2.1" ->
+    {_, Envs} = erlang:fun_info(maps:get(connect_fun, Data), env),
+    [ConnectCfg] = lists:filter(fun erlang:is_map/1, Envs),
+    NData = maps:put(connect_cfg, ConnectCfg, maps:without([connect_fun], Data)),
+    {ok, State, NData};
 
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
@@ -433,10 +452,11 @@ is_topic_present(Topic, Topics) ->
 
 do_connect(#{forwards := Forwards,
              subscriptions := Subs,
-             connect_fun := ConnectFun,
+             connect_module := ConnectModule,
+             connect_cfg := ConnectCfg,
              name := Name} = State) ->
     ok = subscribe_local_topics(Forwards, Name),
-    case ConnectFun(Subs) of
+    case emqx_bridge_connect:start(ConnectModule, ConnectCfg#{subscriptions => Subs}) of
         {ok, Conn} ->
             ?LOG(info, "Bridge ~p is connecting......", [Name]),
             {ok, eval_bridge_handler(State#{connection => Conn}, connected)};
