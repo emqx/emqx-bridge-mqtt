@@ -303,7 +303,21 @@ code_change({down, Vsn}, State, Data, _Extra)
         emqx_bridge_connect:start(ConnectModule, ConnectCfg#{subscriptions => SubsX})
     end,
     NData = maps:put(connect_fun, ConnectFun, maps:without([connect_cfg], Data)),
-    {ok, State, NData};
+    case State == connected
+         andalso ConnectModule == emqx_bridge_mqtt of
+        true ->
+            _ = ConnectModule:stop(maps:get(connetion, NData)),
+            case do_connect(NData) of
+                {ok, NData1} ->
+                    {ok, State, NData1};
+                {error, Reason, _} ->
+                    ?LOG(error, "Reconstruct the worker's connection failed, reason: ~p."
+                                " Please restart it manually!!!", [Reason]),
+                    {ok, idle, NData#{connection => undefined}}
+            end;
+        _ ->
+            {ok, State, NData}
+    end;
 
 code_change(Vsn, State, Data, _Extra)
     when Vsn =:= "4.2.0";
@@ -311,7 +325,23 @@ code_change(Vsn, State, Data, _Extra)
     {_, Envs} = erlang:fun_info(maps:get(connect_fun, Data), env),
     [ConnectCfg] = lists:filter(fun erlang:is_map/1, Envs),
     NData = maps:put(connect_cfg, ConnectCfg, maps:without([connect_fun], Data)),
-    {ok, State, NData};
+
+    ConnectModule = maps:get(connect_module, Data),
+    case State == connected
+         andalso ConnectModule == emqx_bridge_mqtt of
+        true ->
+            _ = ConnectModule:stop(maps:get(connetion, NData)),
+            case do_connect(NData) of
+                {ok, NData1} ->
+                    {ok, State, NData1};
+                {error, Reason, _} ->
+                    ?LOG(error, "Reconstruct the worker's connection failed, reason: ~p."
+                                " Please restart it manually!!!", [Reason]),
+                    {ok, idle, NData#{connection => undefined}}
+            end;
+        _ ->
+            {ok, State, NData}
+    end;
 
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
