@@ -16,7 +16,7 @@
 
 %% @doc Bridge works in two layers (1) batching layer (2) transport layer
 %% The `bridge' batching layer collects local messages in batches and sends over
-%% to remote MQTT node/cluster via `connetion' transport layer.
+%% to remote MQTT node/cluster via `connection' transport layer.
 %% In case `REMOTE' is also an EMQX node, `connection' is recommended to be
 %% the `gen_rpc' based implementation `emqx_bridge_rpc'. Otherwise `connection'
 %% has to be `emqx_bridge_mqtt'.
@@ -293,55 +293,6 @@ get_conn_cfg(Config) ->
                   mountpoint,
                   name
                  ], Config).
-
-code_change({down, Vsn}, State, Data, _Extra)
-    when Vsn =:= "4.2.0";
-         Vsn =:= "4.2.1" ->
-    ConnectModule = maps:get(connect_module, Data),
-    ConnectCfg = maps:get(connect_cfg, Data),
-    ConnectFun = fun(SubsX) ->
-        emqx_bridge_connect:start(ConnectModule, ConnectCfg#{subscriptions => SubsX})
-    end,
-    NData = maps:put(connect_fun, ConnectFun, maps:without([connect_cfg], Data)),
-    case State == connected
-         andalso ConnectModule == emqx_bridge_mqtt of
-        true ->
-            _ = ConnectModule:stop(maps:get(connetion, NData)),
-            case do_connect(NData) of
-                {ok, NData1} ->
-                    {ok, State, NData1};
-                {error, Reason, _} ->
-                    ?LOG(error, "Reconstruct the worker's connection failed, reason: ~p."
-                                " Please restart it manually!!!", [Reason]),
-                    {ok, idle, NData#{connection => undefined}}
-            end;
-        _ ->
-            {ok, State, NData}
-    end;
-
-code_change(Vsn, State, Data, _Extra)
-    when Vsn =:= "4.2.0";
-         Vsn =:= "4.2.1" ->
-    {_, Envs} = erlang:fun_info(maps:get(connect_fun, Data), env),
-    [ConnectCfg] = lists:filter(fun erlang:is_map/1, Envs),
-    NData = maps:put(connect_cfg, ConnectCfg, maps:without([connect_fun], Data)),
-
-    ConnectModule = maps:get(connect_module, Data),
-    case State == connected
-         andalso ConnectModule == emqx_bridge_mqtt of
-        true ->
-            _ = ConnectModule:stop(maps:get(connetion, NData)),
-            case do_connect(NData) of
-                {ok, NData1} ->
-                    {ok, State, NData1};
-                {error, Reason, _} ->
-                    ?LOG(error, "Reconstruct the worker's connection failed, reason: ~p."
-                                " Please restart it manually!!!", [Reason]),
-                    {ok, idle, NData#{connection => undefined}}
-            end;
-        _ ->
-            {ok, State, NData}
-    end;
 
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
