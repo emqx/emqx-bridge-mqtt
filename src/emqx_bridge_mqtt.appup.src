@@ -2,26 +2,14 @@
 
 {VSN,
   [
-    {"4.2.0", [
-      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []},
-      {load_module, emqx_bridge_mqtt, brutal_purge, soft_purge, []},
-      {update, emqx_bridge_worker, {advanced, []}}
-    ]},
-    {"4.2.1", [
-      {load_module, emqx_bridge_mqtt, brutal_purge, soft_purge, []},
-      {update, emqx_bridge_worker, {advanced, []}}
+    {<<"4.2.[01]">>, [
+      {restart_application, emqx_bridge_mqtt}
     ]},
     {<<".*">>, []}
   ],
   [
-    {"4.2.0", [
-      {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []},
-      {load_module, emqx_bridge_mqtt, brutal_purge, soft_purge, []},
-      {update, emqx_bridge_worker, {advanced, []}}
-    ]},
-    {"4.2.1", [
-      {load_module, emqx_bridge_mqtt, brutal_purge, soft_purge, []},
-      {update, emqx_bridge_worker, {advanced, []}}
+    {<<"4.2.[01]">>, [
+      {restart_application, emqx_bridge_mqtt}
     ]},
     {<<".*">>, []}
   ]
