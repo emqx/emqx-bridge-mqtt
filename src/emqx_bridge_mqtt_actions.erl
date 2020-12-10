@@ -184,18 +184,16 @@
         },
         ssl => #{
             order => 14,
-            type => string,
-            required => false,
-            default => <<"off">>,
-            enum => [<<"on">>, <<"off">>],
-            title => #{en => <<"Bridge SSL">>,
-                       zh => <<"Bridge SSL"/utf8>>},
-            description => #{en => <<"Switch which used to enable ssl connection of the bridge">>,
-                             zh => <<"是否启用 Bridge SSL 连接"/utf8>>}
+            type => boolean,
+            default => false,
+            title => #{en => <<"Enable SSL">>,
+                       zh => <<"开启SSL链接"/utf8>>},
+            description => #{en => <<"If enable ssl">>,
+                             zh => <<"是否开启 SSL"/utf8>>}
         },
-        cacertfile => #{
+        cafile => #{
             order => 15,
-            type => string,
+            type => file,
             required => false,
             default => <<"etc/certs/cacert.pem">>,
             title => #{en => <<"CA certificates">>,
@@ -205,7 +203,7 @@
         },
         certfile => #{
             order => 16,
-            type => string,
+            type => file,
             required => false,
             default => <<"etc/certs/client-cert.pem">>,
             title => #{en => <<"SSL Certfile">>,
@@ -215,7 +213,7 @@
         },
         keyfile => #{
             order => 17,
-            type => string,
+            type => file,
             required => false,
             default => <<"etc/certs/client-key.pem">>,
             title => #{en => <<"SSL Keyfile">>,
@@ -386,7 +384,7 @@ on_resource_create(ResId, Params) ->
     ?LOG(info, "Initiating Resource ~p, ResId: ~p", [?RESOURCE_TYPE_MQTT, ResId]),
     {ok, _} = application:ensure_all_started(ecpool),
     PoolName = pool_name(ResId),
-    Options = options(Params, PoolName),
+    Options = options(Params, PoolName, ResId),
     start_resource(ResId, PoolName, Options),
     case test_resource_status(PoolName) of
         true -> ok;
@@ -538,7 +536,7 @@ name(Pool, Id) ->
 pool_name(ResId) ->
     list_to_atom("bridge_mqtt:" ++ str(ResId)).
 
-options(Options, PoolName) ->
+options(Options, PoolName, ResId) ->
     GetD = fun(Key, Default) -> maps:get(Key, Options, Default) end,
     Get = fun(Key) -> GetD(Key, undefined) end,
     Address = Get(<<"address">>),
@@ -566,15 +564,25 @@ options(Options, PoolName) ->
                   {username, str(Get(<<"username">>))},
                   {password, str(Get(<<"password">>))},
                   {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
-                  {retry_interval, cuttlefish_duration:parse(str(GetD(<<"retry_interval">>, "30s")), ms)},
-                  {ssl, cuttlefish_flag:parse(str(Get(<<"ssl">>)))},
-                  {ssl_opts, [{versions, tls_versions()},
-                              {ciphers, ciphers(Get(<<"ciphers">>))},
-                              {keyfile, str(Get(<<"keyfile">>))},
-                              {certfile, str(Get(<<"certfile">>))},
-                              {cacertfile, str(Get(<<"cacertfile">>))}
-                             ]}]
+                  {retry_interval, cuttlefish_duration:parse(str(GetD(<<"retry_interval">>, "30s")), ms)}
+                  ] ++
+                  case convert_key_name(<<"ssl">>, Options) of
+                      true ->
+                          [{ssl, true},{ssl_opts, [{versions, tls_versions()},
+                                                   {ciphers, ciphers(Get(<<"ciphers">>))}|
+                                                   emqx_rule_actions_utils:get_ssl_opts(Options, ResId)
+                                                   ]}];
+                      false ->
+                          []
+                  end
          end.
+
+convert_key_name(<<"ssl">>, Options) ->
+    SSL = maps:get(<<"ssl">>, Options, <<"off">>),
+    case is_binary(SSL) of
+        true -> cuttlefish_flag:parse(str(SSL));
+        false -> SSL
+    end.
 
 
 mqtt_ver(ProtoVer) ->
