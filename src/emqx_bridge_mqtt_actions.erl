@@ -191,7 +191,7 @@
             description => #{en => <<"If enable ssl">>,
                              zh => <<"是否开启 SSL"/utf8>>}
         },
-        cafile => #{
+        cacertfile => #{
             order => 15,
             type => file,
             required => false,
