@@ -564,7 +564,7 @@ options(Options, PoolName, ResId) ->
                   {username, str(Get(<<"username">>))},
                   {password, str(Get(<<"password">>))},
                   {proto_ver, mqtt_ver(Get(<<"proto_ver">>))},
-                  {retry_interval, cuttlefish_duration:parse(str(GetD(<<"retry_interval">>, "30s")), ms)}
+                  {retry_interval, cuttlefish_duration:parse(str(GetD(<<"retry_interval">>, "30s")), s)}
                   ] ++
                   case convert_key_name(<<"ssl">>, Options) of
                       true ->
