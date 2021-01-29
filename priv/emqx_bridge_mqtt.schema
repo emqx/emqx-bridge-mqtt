@@ -222,6 +222,8 @@
                        mqttv5 -> v5;
                        _ -> v4
                    end};
+            Tr(max_inflight_size, Size, Cfg) ->
+                Cfg#{max_inflight => Size};
             Tr(Key, Value, Cfg) ->
                 Cfg#{Key => Value}
          end,

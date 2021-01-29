@@ -132,7 +132,7 @@
 %%      and work as message batch transport layer
 %% reconnect_delay_ms: Delay in milli-seconds for the bridge worker to retry
 %%      in case of transportation failure.
-%% max_inflight_batches: Max number of batches allowed to send-ahead before
+%% max_inflight: Max number of batches allowed to send-ahead before
 %%      receiving confirmation from remote node/cluster
 %% mountpoint: The topic mount point for messages sent to remote node/cluster
 %%      `undefined', `<<>>' or `""' to disable
@@ -251,7 +251,7 @@ init_opts(Config) ->
     BridgeHandler = maps:get(bridge_handler, Config, ?NO_BRIDGE_HANDLER),
     Mountpoint = maps:get(forward_mountpoint, Config, undefined),
     ReceiveMountpoint = maps:get(receive_mountpoint, Config, undefined),
-    MaxInflightSize = maps:get(max_inflight_batches, Config, ?DEFAULT_BATCH_SIZE),
+    MaxInflightSize = maps:get(max_inflight, Config, ?DEFAULT_BATCH_SIZE),
     BatchSize = maps:get(batch_size, Config, ?DEFAULT_BATCH_SIZE),
     Name = maps:get(name, Config, undefined),
     #{start_type => StartType,
