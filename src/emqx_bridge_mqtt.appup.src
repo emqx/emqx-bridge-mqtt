@@ -2,6 +2,9 @@
 
 {VSN,
   [
+    {<<"4.2.10">>, [
+      %% update config schema
+    ]},
     {<<"4.2.[4-9]">>, [
       {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []}
     ]},
@@ -16,6 +19,9 @@
     {<<".*">>, []}
   ],
   [
+    {<<"4.2.10">>, [
+      %% update config schema
+    ]},
     {<<"4.2.[4-9]">>, [
       {load_module, emqx_bridge_mqtt_actions, brutal_purge, soft_purge, []}
     ]},
