@@ -9,6 +9,7 @@ rel
 _build
 .concrete/DEV_MODE
 .rebar
+rebar3.crashdump
 .erlang.mk
 data
 ebin
