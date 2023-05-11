@@ -26,6 +26,8 @@
         , stop/1
         ]).
 
+-export([bridge_mqtt_patched/0]).
+
 %% optional behaviour callbacks
 -export([ ensure_subscribed/3
         , ensure_unsubscribed/2
@@ -38,6 +40,9 @@
 
 %% Messages towards ack collector process
 -define(REF_IDS(Ref, Ids), {Ref, Ids}).
+
+bridge_mqtt_patched() ->
+    true.
 
 %%--------------------------------------------------------------------
 %% emqx_bridge_connect callbacks
