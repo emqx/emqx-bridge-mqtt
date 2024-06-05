@@ -1,5 +1,7 @@
 # EMQ Bridge MQTT
 
+NOTE: Since EMQX v5, this repo has been moved to the monorepo: https://github.com/emqx/emqx/tree/master/apps/emqx_bridge_mqtt
+
 The concept of **Bridge** means that EMQ X supports forwarding messages
 of one of its own topics to another MQTT Broker in some way.
 
